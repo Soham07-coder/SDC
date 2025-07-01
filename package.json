@@ -19,6 +19,7 @@
     "gridfs-stream": "^1.1.1",
     "hamburger-react": "^2.5.2",
     "jsonwebtoken": "^9.0.2",
+    "jszip": "^3.10.1",
     "jwt-decode": "^4.0.0",
     "mongodb": "^6.15.0",
     "mongoose": "^8.13.1",

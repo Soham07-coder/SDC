@@ -5,26 +5,31 @@ import { FaClock, FaCheckCircle, FaTimesCircle } from "react-icons/fa";
 
 const Sidebar = () => {
   const user = JSON.parse(localStorage.getItem("user"));
-  const role = user?.role || "Applicant";
+  // Get role and convert to lowercase for consistent matching in switch case
+  const role = user?.role?.toLowerCase() || "applicant"; // Default to lowercase 'applicant'
 
-  // Set portal label
-  const portalLabel = `${role} Portal`;
+  // Set portal label (can still use original case for display if desired)
+  const portalLabel = `${user?.role || "Applicant"} Portal`; // Use original case for display
 
   // Set role-based routing
   const getRoute = (type) => {
+    // The 'role' variable here is already lowercased from the const declaration above
     switch (role) {
-      case "Validator":
-        return `/fac${type}`;
-      case "Department Coordinator":
+      case "validator":
+      case "faculty": // Assuming 'faculty' role also uses the /fac route prefix
+        return `/fac${type}`; // e.g., /facPending, /facAccepted
+      case "department coordinator":
         return `/deptcoord${type}`;
-      case "Institute Coordinator":
+      case "institute coordinator":
         return `/insticoord${type}`;
-      case "HOD":
+      case "hod":
         return `/hod${type}`;
-      case "Principal":
+      case "principal":
         return `/principal${type}`;
       default:
-        return `/${type.toLowerCase()}`; // fallback for Student or unknown roles
+        // Fallback for any other roles, might go to a generic dashboard or error page
+        // Ensure this fallback path is valid in your routing setup.
+        return `/${type.toLowerCase()}`;
     }
   };
 
@@ -46,7 +51,10 @@ const Sidebar = () => {
 
       {/* Sidebar Options */}
       <div className="sidebar-links">
-        <p>Application Forms</p>
+        {/* Only show 'Application Forms' if not faculty/admin etc.
+            You might want to add conditional rendering here based on role */}
+        {(role === "student" || role === "applicant") && <p>Application Forms</p>}
+
 
         {/* Application Status Section */}
         <div className="status-section">
@@ -71,6 +79,7 @@ const Sidebar = () => {
           </div>
         </div>
 
+        {/* You might want to add conditional rendering for these links too */}
         <Link to="/faqs" className="nav-item">FAQ's</Link>
         <br />
         <Link to="/contact" className="nav-item">Contact Us</Link>

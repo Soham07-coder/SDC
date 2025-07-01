@@ -1,21 +1,28 @@
-import React from "react";
-import { Link, useLocation } from "react-router-dom"; 
+import React, { useEffect, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import "../style.css";
 import somaiyaLogo from "../assets/somaiya-logo.png";
 
 const Navbar = () => {
-  const user = JSON.parse(localStorage.getItem("user"));
+  const location = useLocation();
+  
+  // Use state to properly track user from localStorage
+  const [user, setUser] = useState(() => {
+    const storedUser = localStorage.getItem("user");
+    return storedUser ? JSON.parse(storedUser) : null;
+  });
+
   const userName = user?.svvNetId?.split("@")[0] || "User";
   const userRole = user?.role || "Student";
-  const location = useLocation();
 
-  // Clean display of role (e.g., "Faculty" instead of "Validator")
+  // Clean display for role names
   let displayRole = userRole === "Validator" ? "Faculty" : userRole;
 
-  // Define dynamic home route based on role
+  // Dynamic role-based home routing
   const roleRoutes = {
     Student: "/home",
     Validator: "/facHome",
+    Faculty: "/facHome",
     Admin: "/AdHome",
     "Department Coordinator": "/deptcoordHome",
     "Institute Coordinator": "/insticoordHome",
@@ -23,7 +30,7 @@ const Navbar = () => {
     Principal: "/principalHome",
   };
 
-  const homeLink = roleRoutes[userRole] || "/home"; // Fallback to student home
+  const homeLink = roleRoutes[userRole] || "/home";
 
   return (
     <nav className="navbar-home">

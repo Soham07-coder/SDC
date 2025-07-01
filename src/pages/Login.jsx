@@ -2,7 +2,6 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { GoogleOAuthProvider, GoogleLogin } from "@react-oauth/google";
 import { jwtDecode } from "jwt-decode";
-
 import "./login.css";
 import logo from "../assets/somaiya-logo.png";
 import logo1 from "../assets/trust.png";
@@ -14,26 +13,35 @@ const Login = () => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [studentError, setStudentError] = useState("");
+  const [error, setError] = useState("");
   const [validatorError, setValidatorError] = useState("");
   const navigate = useNavigate();
 
-  const hardcodedUsers = {
-    "devanshu.d": "Devanshu123",
-    "sohamgore": "12345678",
-  };
-
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
-    setStudentError("");
-    localStorage.clear(); // Clear previous data
+    setError("");
 
-    if (hardcodedUsers[username] === password) {
+    const hardcodedUsers = {
+      "devanshu.d": { password: "Devanshu123", role: "student", branch: "(AI & DS)" },
+      "sohamgore": { password: "12345678", role: "student", branch: "COMPS" },
+      "faculty.a": { password: "faculty123", role: "validator", branch: "COMPS" },
+    };
+
+    const userEntry = hardcodedUsers[username];
+
+    if (userEntry && userEntry.password === password) {
+      const { role, branch } = userEntry;
       localStorage.setItem("svvNetId", username);
-      localStorage.setItem("user", JSON.stringify({ svvNetId: username, role: "Student" }));
-      navigate("/home");
+      localStorage.setItem("user", JSON.stringify({ svvNetId: username, role, branch }));
+
+      // 🔁 Navigate based on role
+      if (role === "validator") {
+        navigate("/facHome");
+      } else {
+        navigate("/home");
+      }
     } else {
-      setStudentError("Invalid credentials!");
-      alert("Invalid credentials!");
+      setError("Invalid SVV Net ID or password.");
     }
   };
 
@@ -43,7 +51,7 @@ const Login = () => {
     "vaibhav.vasani@somaiya.edu",
     "swapnil.cp@somaiya.edu",
   ];
-  const DEPT_COORDINATORS = ["swapnil.cp@somaiya.edu","devanshu.de@somaiya.edu"];
+  const DEPT_COORDINATORS = ["swapnil.cp@somaiya.edu","devanshu.de@somaiya.edu","soham.gore@somaiya.edu"];
   const INSTI_COORDINATORS = ["smitasankhe@somaiya.edu","devanshu.des@somaiya.edu"];
   const HOD_EMAILS = ["devanshu.dev@somaiya.edu"];
   const PRINCIPAL_EMAILS = ["principal.kjsce@somaiya.edu","devanshu.desa@somaiya.edu"];
@@ -51,8 +59,6 @@ const Login = () => {
   const handleGoogleSuccess = (credentialResponse, role = "Student") => {
     const setError = role === "Validator" ? setValidatorError : setStudentError;
     setError("");
-    
-
     try {
       if (!credentialResponse.credential) {
         setError("Google login failed: No credential received.");
@@ -206,16 +212,15 @@ const Login = () => {
                 required
               />
 
-              <div className="remember-me">
-                <input type="checkbox" id="remember" />
-                <label htmlFor="remember">Remember me</label>
+              <div className="flex items-center space-x-2">
+                <input type="checkbox" id="remember" className="w-4 h-4" />
+                <label htmlFor="remember" className="text-sm">Remember me</label>
               </div>
 
-              {studentError && <p className="error-message">{studentError}</p>}
+              {error && <p className="error-message">{error}</p>}
 
               <button type="submit" className="login-button">Login</button>
             </form>
-
             <h1 className="or">OR</h1>
             <GoogleLogin
               onSuccess={(credentialResponse) => handleGoogleSuccess(credentialResponse, "Student")}

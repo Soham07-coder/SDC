@@ -7,73 +7,101 @@ import "../components/styles/facPending.css";
 const FacPendingApplications = () => {
   const [applications, setApplications] = useState([]);
   const navigate = useNavigate();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  useEffect(() => {
-       const mockData = [
-      {
-        id:16014223035,
-        topic: "UG_1",
-        name: "Faculty_Computer_KJSCE",
-        submitted: "24/03/2025",
-        branch: "AIML",
-      },
-      {
-        id: 16014210456,
-        topic: "PG_2",
-        name: "Faculty_Electronics_KJSCE",
-        submitted: "25/03/2025",
-        branch: "Electronics",
-      },
-      {
-        id: 16014204256,
-        topic: "UG_3",
-        name: "Faculty_Mechanical_KJSCE",
-        submitted: "26/03/2025",
-        branch: "Mechanical",
-      },
-    ];
+  const fetchApplications = async () => {
+    setLoading(true); // Set loading to true before fetching
+    setError(null); // Clear any previous errors
 
-    // Only initialize if pendingApps is empty (first load)
-    const existing = localStorage.getItem("pendingApps");
-    if (!existing) {
-      localStorage.setItem("pendingApps", JSON.stringify(mockData));
+    try {
+      // Make the API call to your backend
+      const res = await fetch(`http://localhost:5000/api/facapplication/pending?all=true`);
+
+      // Check if the response was successful (status 200-299)
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status} ${res.statusText}`);
+      }
+
+      const data = await res.json(); // Parse the JSON response
+      setApplications(data); // Update the applications state with fetched data
+    } catch (err) {
+      console.error("Error fetching faculty pending applications:", err);
+      setError(err.message); // Set the error state if an error occurs
+    } finally {
+      setLoading(false); // Always set loading to false after the fetch operation
     }
-
-
-    const stored = JSON.parse(localStorage.getItem("pendingApps")) || [];
-    setApplications(stored);
-  }, []);
-
-  const updateStorage = (key, item) => {
-    const existing = JSON.parse(localStorage.getItem(key)) || [];
-    localStorage.setItem(key, JSON.stringify([...existing, item]));
   };
 
-  const handleAction = (type, id) => {
+  useEffect(() => {
+    fetchApplications();
+  }, []); 
+
+  const handleAction = async (type, id) => {
     const actionName = type === "approve" ? "Approve" : "Reject";
-    const confirmed = window.confirm(`Are you sure to ${actionName}?`);
+    const statusToSet = type === "approve" ? "approved" : "rejected"; // Status string for DB
+
+    const confirmed = window.confirm(`Are you sure you want to ${actionName} this application?`);
     if (!confirmed) return;
 
     let remarks = "";
+    // Loop until remarks are provided or user cancels
     while (!remarks) {
       remarks = window.prompt(`Enter remarks for ${actionName}:`);
-      if (!remarks) alert("Remarks are required.");
+      if (remarks === null) { // User clicked cancel on prompt
+        return;
+      }
+      if (!remarks.trim()) { // Check for empty or whitespace-only remarks
+        alert("Remarks are required.");
+      }
     }
 
-    const app = applications.find((a) => a.id === id);
-    const updated = { ...app, remarks };
+    try {
+      // API call to update the application status and remarks in the database
+      const res = await fetch(`http://localhost:5000/api/facapplication/${id}/update-status`, {
+        method: 'PATCH', // Use PATCH for partial updates
+        headers: {
+          'Content-Type': 'application/json',
+          // 'Authorization': `Bearer ${yourAuthToken}` // Uncomment and add if you have authentication
+        },
+        body: JSON.stringify({
+          status: statusToSet,
+          remarks: remarks.trim() // Trim whitespace from remarks
+        }),
+      });
 
-    // Save to approved or rejected
-    updateStorage(type === "approve" ? "approveApps" : "rejectedApps", updated);
+      if (!res.ok) {
+        const errorData = await res.json(); // Try to get error message from backend
+        throw new Error(errorData.message || `Failed to ${actionName} application.`);
+      }
 
-    // Remove from shared pending
-    const newList = applications.filter((a) => a.id !== id);
-    setApplications(newList);
-    localStorage.setItem("pendingApps", JSON.stringify(newList));
+      // If the API call is successful, update the local state: remove the acted-upon application
+      const newList = applications.filter((app) => app._id !== id);
+      setApplications(newList);
 
-    // Navigate
-    navigate(`/${type === "approve" ? "facaccepted" : "facRejected"}`);
+      // Navigate to the respective page after successful action
+      navigate(`/${type === "approve" ? "facaccepted" : "facRejected"}`);
+
+    } catch (err) {
+      console.error(`Error ${actionName} application:`, err);
+      alert(`Failed to ${actionName} application: ${err.message || "Please try again."}`);
+      // Re-fetch applications to ensure state consistency if update failed on backend
+      fetchApplications();
+    }
   };
+
+  const handleViewClick = (id) => {
+    navigate(`/application/${id}`); // Navigate to a specific application's detail page
+  };
+
+  // Conditional rendering for loading and error states
+  if (loading) {
+    return <div className="p-6 text-center text-lg">Loading pending applications...</div>;
+  }
+
+  if (error) {
+    return <div className="p-6 text-center text-red-600 text-lg">Error: {error}. Please try again later.</div>;
+  }
 
   return (
     <div className="main-wrapper">
@@ -86,6 +114,7 @@ const FacPendingApplications = () => {
             <table className="custom-table">
               <thead>
                 <tr>
+                  <th>Form Type</th>
                   <th>Topic</th>
                   <th>Name</th>
                   <th>Submitted</th>
@@ -94,23 +123,39 @@ const FacPendingApplications = () => {
                 </tr>
               </thead>
               <tbody>
-                {applications.length > 0 ? (
-                  applications.map((app) => (
-                    <tr key={app.id}>
-                      <td>{app.topic}</td>
-                      <td>{app.name}</td>
-                      <td>{app.submitted}</td>
-                      <td>{app.branch}</td>
-                      <td>
-                        <button className="view-button">View</button>
-                        <button onClick={() => handleAction("approve", app.id)} className="approve-button">Approve</button>
-                        <button onClick={() => handleAction("reject", app.id)} className="reject-button">Reject</button>
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr><td colSpan="5">No Pending Applications</td></tr>
-                )}
+                  {applications.length > 0 ? (
+                      applications.map((app) => (
+                          <tr key={app._id}> {/* CHANGE 1: Use app._id for the key */}
+                              <td>{app.formType || "N/A"}</td>
+                              <td>{app.topic || "N/A"}</td> {/* Added || "N/A" for safety */}
+                              <td>{app.name || "N/A"}</td> {/* Added || "N/A" for safety */}
+                              <td>
+                                  {new Date(app.submitted).toLocaleString('en-GB', {
+                                      day: '2-digit',
+                                      month: 'short',
+                                      year: 'numeric',
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                      hour12: true // Use AM/PM format
+                                  })}
+                              </td>
+                              <td>{app.branch || "N/A"}</td> {/* Added || "N/A" for safety */}
+                              <td>
+                                  {/* The handleViewClick already uses app._id, which is correct */}
+                                  <button onClick={() => handleViewClick(app._id)} className="view-button">View</button>
+                                  {/* CHANGE 2: Use app._id when calling handleAction */}
+                                  <button onClick={() => handleAction("approve", app._id)} className="approve-button">Approve</button>
+                                  {/* CHANGE 3: Use app._id when calling handleAction */}
+                                  <button onClick={() => handleAction("reject", app._id)} className="reject-button">Reject</button>
+                              </td>
+                          </tr>
+                      ))
+                  ) : (
+                      <tr>
+                          {/* CHANGE 4: Adjusted colSpan to 6 as per your current table headers (Form Type, Topic, Name, Submitted, Branch, Action) */}
+                          <td colSpan="6" className="text-center">No Pending Applications</td>
+                      </tr>
+                  )}
               </tbody>
             </table>
           </div>

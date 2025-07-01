@@ -2,7 +2,7 @@ import React from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import Login from "./pages/Login";
 import Home from "./pages/Home";
-import Fachome from "./pages/Fachome";
+import Fachome from "./pages/facHome";
 import UG_1 from "./components/FormComponent/UG_1";
 import UG_2 from "./components/FormComponent/UG_2";
 import UG_3_A from "./components/FormComponent/UG_3_A";
@@ -26,6 +26,15 @@ import DeptCoordDashboard from "./pages/DepartmentCoordinator";
 import PrincipalDash from "./pages/Principal";
 import InstCoordDash from "./pages/InstituteCoordinator";
 import AdminDashboard from "./pages/Admin";
+import FacUGForm1 from "./components/FormComponent/FacUG1";
+import FacUGForm2 from "./components/FormComponent/FacUG2";
+import FacUGForm3A from "./components/FormComponent/FacUG3a";
+import FacUGForm3B from "./components/FormComponent/FacUG3b";
+import FacPGForm1 from "./components/FormComponent/FacPG1";
+import FacPG2aForm from "./components/FormComponent/FacPG2a";
+import FacPG2bForm from "./components/FormComponent/FacPG2b";
+import FacR1Form from "./components/FormComponent/FacR1";
+import FacultyFormViewer from "./components/FormComponent/FacultyFormViewer";
 
 import "./style.css";
 
@@ -59,6 +68,23 @@ const App = () => {
         <Route path="/principalHome" element={<PrincipalDash />} />
         <Route path="/insticoordHome" element={<InstCoordDash />} />
         <Route path="/AdHome" element={<AdminDashboard />} />
+        {/* <Route path="/fachome/ug1" element={<UG_1 />} />
+        <Route path="/fachome/ug2" element={<UG_2 />} />
+        <Route path="/fachome/ug3a" element={<UG_3_A />} />
+        <Route path="/fachome/ug3b" element={<UG_3_B />} />
+        <Route path="/fachome/pg1" element={<PG_1 />} />
+        <Route path="/fachome/pg2a" element={<PG_2_A />} />
+        <Route path="/fachome/pg2b" element={<PG_2_B />} />
+        <Route path="/fachome/r1" element={<R1 />} /> */}
+        <Route path="/fachome/fac-ug1" element={<FacUGForm1 />} />
+        <Route path="/fachome/fac-ug2" element={<FacUGForm2/>} />
+        <Route path="/fachome/fac-ug3a" element={<FacUGForm3A/>} />
+        <Route path="/fachome/fac-ug3b" element={<FacUGForm3B/>} />
+        <Route path="/fachome/fac-pg1" element={<FacPGForm1/>} />
+        <Route path="/fachome/fac-pg2a" element={<FacPG2aForm/>} />
+        <Route path="/fachome/fac-pg2b" element={<FacPG2bForm/>} />
+        <Route path="/fachome/fac-r1" element={<FacR1Form/>} />
+        <Route path="/fac/view/:formType/:formId" element={<FacultyFormViewer />} />
         </Routes>
     </Router>
   );

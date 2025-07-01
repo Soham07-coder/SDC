@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import axios from "axios";
 import Navbar from "../components/Navbar";
 import Sidebar from "../components/Sidebar";
 import "../style.css";
@@ -9,27 +10,18 @@ const DeptCoordDashboard = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const pending = JSON.parse(localStorage.getItem("pendingApps")) || [];
-    const approved = JSON.parse(localStorage.getItem("approveApps")) || [];
-    const rejected = JSON.parse(localStorage.getItem("rejectedApps")) || [];
+    const fetchApplications = async () => {
+      try {
+        const response = await axios.post("http://localhost:5000/api/facapplication/form/deptCoordDashboard");
+        setApplications(response.data);
+      } catch (error) {
+        console.error("Error fetching applications:", error);
+      }
+    };
 
-    const withStatus = (data, status) =>
-      data.map((app) => ({
-        ...app,
-        status,
-        
-      }));
-
-    const allApps = [
-      ...withStatus(pending, "Pending"),
-      ...withStatus(approved, "Approved"),
-      ...withStatus(rejected, "Rejected"),
-    ];
-
-    setApplications(allApps);
+    fetchApplications();
   }, []);
 
- 
   return (
     <>
       <Navbar />
@@ -59,19 +51,16 @@ const DeptCoordDashboard = () => {
                 {applications.length > 0 ? (
                   applications.map((app, index) => (
                     <tr key={index}>
-                      <td>{app.topic}</td>
-                      <td>{app.id}</td>
-                      <td>{app.submitted}</td>
+                      <td>{app.formType || "No Topic"}</td> {/* Display Form Type */}
+                      <td>{app.rollNumber || app.rollNo || app.students?.[0]?.rollNo || app.studentDetails?.[0]?.rollNumber || "N/A"}</td>
+                      <td>{new Date(app.submitted).toLocaleDateString()}</td>
                       <td className={`status ${app.status.toLowerCase()}`}>
                         {app.status}
                       </td>
-                    
                       <td>
                         <button
                           className="view-btn"
-                          onClick={() =>
-                            navigate(`/facHome/${app.path || app.formId.toLowerCase()}`)
-                          }
+                          onClick={() => navigate(`/facHome/${app.formId}`)}
                         >
                           View Form
                         </button>
@@ -80,7 +69,7 @@ const DeptCoordDashboard = () => {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan="6">No Applications Found</td>
+                    <td colSpan="5">No Applications Found</td>
                   </tr>
                 )}
               </tbody>
