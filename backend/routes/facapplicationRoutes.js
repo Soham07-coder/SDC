@@ -71,6 +71,7 @@ const processFormForDisplay = async (form, formType, userBranchFromRequest) => {
    let processedForm = { ...form };
 
     processedForm._id = form._id.toString();
+    processedForm.formId = form._id.toString();
     processedForm.topic = form.projectTitle || form.paperTitle || form.topic || "Untitled Project";
     processedForm.name = form.studentName || form.applicantName || form.students?.[0]?.name || form.studentDetails?.[0]?.studentName || "N/A";
     processedForm.branch = userBranchFromRequest || form.branch || form.department || form.students?.[0]?.branch || form.studentDetails?.[0]?.branch || "N/A";
@@ -916,7 +917,6 @@ router.post("/form/r1", async (req, res) => {
 
 router.post("/form/deptCoordDashboard", async (req, res) => {
   try {
-    // Directly fetch all forms without any filter
     const [
       ug1Forms,
       ug2Forms,
@@ -937,7 +937,6 @@ router.post("/form/deptCoordDashboard", async (req, res) => {
       R1Form.find().sort({ createdAt: -1 }).lean(),
     ]);
 
-    // Process forms and attach formType
     const results = await Promise.all([
       ...ug1Forms.map((f) => processFormForDisplay(f, "UG_1")),
       ...ug2Forms.map((f) => processFormForDisplay(f, "UG_2")),
@@ -957,5 +956,6 @@ router.post("/form/deptCoordDashboard", async (req, res) => {
     return res.status(500).json({ message: "Server error while fetching applications" });
   }
 });
+
 
 export default router;

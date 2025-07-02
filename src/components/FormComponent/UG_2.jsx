@@ -459,18 +459,9 @@ const UGForm2 = ({ viewOnly = false, data = null }) => {
   };
 
   const removeStudentRow = (index) => {
-    // Ensure there are always 4 student rows, even if empty
-    if (formData.students.filter(s => Object.values(s).some(val => val !== "")).length <=1 && Object.values(formData.students[index]).every(val => val === "")) {
-        setUserMessage({ text: "Cannot remove the last populated student entry if others are empty. Clear fields instead.", type: "error" });
-        return;
-    }
-
     const updatedStudents = [...formData.students];
     updatedStudents.splice(index, 1);
-    setFormData({ ...formData, students: [...updatedStudents, {name: "", year: "", class: "", div: "", branch: "", rollNo: "", mobileNo: ""}], // Add an empty row back to maintain 4
-        errors: { ...formData.errors, students: null }
-    });
-    setUserMessage(null);
+    setFormData({ ...formData, students: updatedStudents });
   };
 
   const updateExpenseField = (e, index, field) => {
@@ -502,13 +493,16 @@ const UGForm2 = ({ viewOnly = false, data = null }) => {
     if (disableFileControls) return; // Prevent upload if controls are disabled
 
     const selectedFiles = Array.from(e.target.files);
-    const currentFiles = [...formData.uploadedFiles];
+    const currentFiles = [...formData.uploadedFiles]; // This includes both new File objects and fetched file metadata
     setUserMessage(null);
     setFormData(prev => ({ ...prev, errors: { ...prev.errors, uploadedFiles: null } }));
 
     const newFiles = [];
     let error = "";
     let isNewZipSelected = false;
+
+    // Determine if there's an existing ZIP file in the current formData.uploadedFiles
+    const hasExistingZip = currentFiles.some(f => (f instanceof File && (f.type === "application/zip" || f.name?.toLowerCase().endsWith(".zip"))) || (typeof f === 'object' && f !== null && f.type === "application/zip"));
 
     for (const file of selectedFiles) {
         const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
@@ -521,6 +515,7 @@ const UGForm2 = ({ viewOnly = false, data = null }) => {
 
         if (isZip) {
             // If a new ZIP is selected, it must be the only file selected in this action
+            // And no other files (PDFs or existing ZIPs) should be present
             if (selectedFiles.length > 1 || currentFiles.length > 0) {
                 error = "If uploading a ZIP file, it must be the only file. Please clear existing files and upload only the ZIP.";
                 break;
@@ -537,21 +532,22 @@ const UGForm2 = ({ viewOnly = false, data = null }) => {
         // If it's a PDF
         if (isPdf) {
             // If there's an existing ZIP, or a new ZIP was just selected, cannot add PDFs
-            if (currentFiles.some(f => (f instanceof File && (f.type === "application/zip" || f.name?.toLowerCase().endsWith(".zip"))) || (f.url && f.type === "application/zip")) || isNewZipSelected) {
+            if (hasExistingZip || isNewZipSelected) {
                 error = "Cannot upload PDFs when a ZIP file is already present or selected.";
                 break;
             }
-            // Check for max 5 PDFs
-            if (currentFiles.filter(f => (f instanceof File && f.type === "application/pdf") || (f.url && f.type === "application/pdf")).length + newFiles.length >= 5) {
+            // Check for max 5 PDFs (including existing ones)
+            const currentPdfCount = currentFiles.filter(f => (f instanceof File && f.type === "application/pdf") || (typeof f === 'object' && f !== null && f.type === "application/pdf")).length;
+            if (currentPdfCount + newFiles.length >= 5) {
                 error = "Maximum of 5 PDF files allowed.";
                 break;
             }
             if (file.size > 5 * 1024 * 1024) {
                 error = `PDF "${file.name}" exceeds 5MB.`;
                 break;
-            }
-            // Check for duplicates by name
-            if (currentFiles.some(f => f.name === file.name) || newFiles.some(f => f.name === file.name)) {
+                }
+            // Check for duplicates by name (only for local files, fetched files have unique IDs)
+            if (currentFiles.some(f => f.name === file.name && f instanceof File) || newFiles.some(f => f.name === file.name)) {
                 error = `File "${file.name}" is already selected.`;
                 break;
             }
@@ -573,7 +569,6 @@ const UGForm2 = ({ viewOnly = false, data = null }) => {
     }
     e.target.value = null; // Clear the file input
   };
-
 
   const handleGroupLeaderSignatureUpload = (e) => {
     if (disableFileControls) return;
@@ -714,7 +709,7 @@ const UGForm2 = ({ viewOnly = false, data = null }) => {
       };
 
       const saveRes = await axios.post(
-        "http://localhost:5000/api/ug2form/save", // Matches backend route
+        "http://localhost:5000/api/ug2form/saveFormData", // Matches backend route
         formPayload
       );
 
@@ -725,40 +720,37 @@ const UGForm2 = ({ viewOnly = false, data = null }) => {
       const formId = saveRes.data.formId;
       console.log("✅ Form saved with ID:", formId);
 
-      // STEP 2: Upload Files (PDFs/ZIP) - using common endpoint /upload-docs
-      const uploadedFiles = formData.uploadedFiles.filter(f => f instanceof File); // Only new local files
-      const pdfFiles = uploadedFiles.filter(f => f.type === "application/pdf");
-      const zipFile = uploadedFiles.find(f => f.type === "application/zip" || f.name?.toLowerCase().endsWith(".zip"));
+      // STEP 2: Upload Files (PDFs/ZIP) - using common endpoint /upload-documents
+      const filesToUpload = formData.uploadedFiles.filter(f => f instanceof File); // Only new local files
+      if (filesToUpload.length > 0) {
+        const docFormData = new FormData();
+        const isZipUpload = filesToUpload.some(f => f.type === "application/zip" || f.name?.toLowerCase().endsWith(".zip"));
 
-      if (zipFile) {
-        const docFormData = new FormData();
-        docFormData.append("zip", zipFile); // 'zip' must match backend field name
+        if (isZipUpload) {
+          docFormData.append("zip", filesToUpload[0]); // Append the single ZIP file
+        } else {
+          filesToUpload.forEach((file) => {
+            docFormData.append(`pdf`, file); // Append multiple PDFs
+          });
+        }
+
+        const uploadDocsUrl = `http://localhost:5000/api/ug2form/upload-documents/${formId}`;
+        console.log("Attempting to upload documents to:", uploadDocsUrl); // Log the URL
         await axios.post(
-          `http://localhost:5000/api/ug2form/upload-docs/${formId}`,
+          uploadDocsUrl, // Matches new backend route
           docFormData,
-          { headers: { "Content-Type": "multipart/form-data" } }
+          { headers: { "Content-Type": "multipart/form-data" } } // Corrected typo here
         );
-        console.log("✅ ZIP file uploaded.");
-      } else if (pdfFiles.length > 0) {
-        const docFormData = new FormData();
-        pdfFiles.forEach((file, index) => {
-            docFormData.append(`pdf`, file); // 'pdf' must match backend field name for multiple PDFs
-        });
-        await axios.post(
-          `http://localhost:5000/api/ug2form/upload-docs/${formId}`,
-          docFormData,
-          { headers: { "Content-Type": "multipart/form-data" } }
-        );
-        console.log("✅ PDF files uploaded.");
+        console.log("✅ Documents (PDFs/ZIP) uploaded.");
       }
 
 
-      // STEP 3: Upload signatures
+      // STEP 3: Upload signatures (only if new file selected)
       const uploadSignature = async (file, type) => {
         const sigForm = new FormData();
         sigForm.append("sig", file); // 'sig' must match backend field name
         await axios.post(
-          `http://localhost:5000/api/ug2form/upload-signature/${formId}/${type}`, // Matches backend route
+          `http://localhost:5000/api/ug2form/uploadSignature/${formId}/${type}`, // Matches backend route
           sigForm,
           { headers: { "Content-Type": "multipart/form-data" } }
         );
@@ -787,9 +779,6 @@ const UGForm2 = ({ viewOnly = false, data = null }) => {
   return (
     <div className="form-container">
       <h2>Under Graduate Form 2</h2>
-      {data?._id && ( // Only show ID if data exists (view/edit mode)
-        <p className="submission-id">Submission ID: {data._id}</p>
-      )}
       <p className="form-category">Interdisciplinary Projects (FY to LY Students)</p>
 
       {userMessage && (
@@ -945,7 +934,6 @@ const UGForm2 = ({ viewOnly = false, data = null }) => {
             </button>
           )}
         </div>
-
         <table className="student-table">
           <thead>
             <tr>
@@ -1078,7 +1066,6 @@ const UGForm2 = ({ viewOnly = false, data = null }) => {
             ➕ Add More Student
           </button>
         )}
-
         <table className="budget-table">
           <thead>
             <tr>
@@ -1175,15 +1162,20 @@ const UGForm2 = ({ viewOnly = false, data = null }) => {
               />
               </>
             )}
-            {formData.groupLeaderSignature?.url ? (
-              <img
-                src={formData.groupLeaderSignature.url}
-                alt="Group Leader Signature"
-                className="signature-display"
-              />
-            ) : formData.groupLeaderSignature instanceof File ? (
-              <p className="file-name">Selected: {formData.groupLeaderSignature.name}</p>
-            ) : (data?.groupLeaderSignatureId && <p>No Group Leader Signature uploaded.</p>)} {/* Show message if ID exists but fetch failed or new form */}
+            {/* Display logic for Group Leader Signature */}
+            {formData.groupLeaderSignature ? (
+              formData.groupLeaderSignature instanceof File ? (
+                <p className="file-name">Selected: {formData.groupLeaderSignature.name}</p>
+              ) : ( // It's a fetched file object
+                <p className="file-name">
+                  Uploaded: <a href={formData.groupLeaderSignature.url} target="_blank" rel="noopener noreferrer">
+                    {formData.groupLeaderSignature.name}
+                  </a>
+                </p>
+              )
+            ) : (
+                <p>No Group Leader Signature uploaded.</p>
+            )}
             {formData.errors.groupLeaderSignature && (
               <p className="error-message">
                 {formData.errors.groupLeaderSignature}
@@ -1202,15 +1194,20 @@ const UGForm2 = ({ viewOnly = false, data = null }) => {
                 disabled={disableFileControls}
               />
             )}
-            {formData.guideSignature?.url ? (
-              <img
-                src={formData.guideSignature.url}
-                alt="Guide Signature"
-                className="signature-display"
-              />
-            ) : formData.guideSignature instanceof File ? (
-              <p className="file-name">Selected: {formData.guideSignature.name}</p>
-            ) : (data?.guideSignatureId && <p>No Guide Signature uploaded.</p>)} {/* Show message if ID exists but fetch failed or new form */}
+            {/* Display logic for Guide Signature */}
+            {formData.guideSignature ? (
+              formData.guideSignature instanceof File ? (
+                <p className="file-name">Selected: {formData.guideSignature.name}</p>
+              ) : ( // It's a fetched file object
+                <p className="file-name">
+                  Uploaded: <a href={formData.guideSignature.url} target="_blank" rel="noopener noreferrer">
+                    {formData.guideSignature.name}
+                  </a>
+                </p>
+              )
+            ) : (
+                <p>No Guide Signature uploaded.</p>
+            )}
             {formData.errors.guideSignature && (
               <p className="error-message">{formData.errors.guideSignature}</p>
             )}
@@ -1238,7 +1235,6 @@ const UGForm2 = ({ viewOnly = false, data = null }) => {
               {formData.uploadedFiles.map((file, index) => {
                 const fileName = file.name || "Unnamed";
                 const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
-
                 return (
                   <li key={index}>
                     {file.url ? ( // Display fetched file with link

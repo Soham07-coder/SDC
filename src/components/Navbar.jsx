@@ -1,36 +1,50 @@
 import React, { useEffect, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import "../style.css";
 import somaiyaLogo from "../assets/somaiya-logo.png";
 
 const Navbar = () => {
   const location = useLocation();
-  
-  // Use state to properly track user from localStorage
+  const navigate = useNavigate();
+
+  // Use state to track user from localStorage
   const [user, setUser] = useState(() => {
     const storedUser = localStorage.getItem("user");
     return storedUser ? JSON.parse(storedUser) : null;
   });
 
   const userName = user?.svvNetId?.split("@")[0] || "User";
-  const userRole = user?.role || "Student";
+  const userRole = user?.role?.toLowerCase() || "student"; // Ensure lowercase role
 
-  // Clean display for role names
-  let displayRole = userRole === "Validator" ? "Faculty" : userRole;
+  // Clean display role: capitalize first letter of each word
+  const capitalize = (role) =>
+    role
+      .split(" ")
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ");
 
-  // Dynamic role-based home routing
+  let displayRole = userRole === "validator" ? "Faculty" : capitalize(userRole);
+
+  // Dynamic home routing based on lowercase roles
   const roleRoutes = {
-    Student: "/home",
-    Validator: "/facHome",
-    Faculty: "/facHome",
-    Admin: "/AdHome",
-    "Department Coordinator": "/deptcoordHome",
-    "Institute Coordinator": "/insticoordHome",
-    HOD: "/hodHome",
-    Principal: "/principalHome",
+    student: "/home",
+    validator: "/facHome",
+    faculty: "/facHome",
+    admin: "/AdHome",
+    "department coordinator": "/deptcoordHome",
+    "institute coordinator": "/insticoordHome",
+    hod: "/hodHome",
+    principal: "/principalHome",
   };
 
   const homeLink = roleRoutes[userRole] || "/home";
+
+  // Logout handler (optional: can also clear localStorage)
+  const handleLogout = () => {
+    localStorage.removeItem("user");
+    localStorage.removeItem("svvNetId");
+    navigate("/"); // Redirect to login
+  };
 
   return (
     <nav className="navbar-home">
@@ -42,7 +56,7 @@ const Navbar = () => {
         <Link to={homeLink} className="nav-link">Home</Link>
         <Link to="/dashboard" className="nav-link">Dashboard</Link>
         <Link to="/policy" className="nav-link">Policy</Link>
-        <Link to="/" className="nav-link logout-btn">Logout</Link>
+        <button className="nav-link logout-btn" onClick={handleLogout}>Logout</button>
       </div>
 
       <div className="navbar-user-home">

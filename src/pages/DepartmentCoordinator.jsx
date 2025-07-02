@@ -22,6 +22,26 @@ const DeptCoordDashboard = () => {
     fetchApplications();
   }, []);
 
+  // Roll number extractor
+  const getRollNumber = (app) => {
+    return (
+      app.rollNumber ||
+      app.rollNo ||
+      app.students?.[0]?.rollNo ||
+      app.studentDetails?.[0]?.rollNumber ||
+      "N/A"
+    );
+  };
+
+  // View form handler
+  const handleViewForm = (formType, formId) => {
+    if (formType && formId) {
+      navigate(`/facHome/${formType}/${formId}`);
+    } else {
+      console.warn("Form ID or Form Type is missing.");
+    }
+  };
+
   return (
     <>
       <Navbar />
@@ -51,8 +71,8 @@ const DeptCoordDashboard = () => {
                 {applications.length > 0 ? (
                   applications.map((app, index) => (
                     <tr key={index}>
-                      <td>{app.formType || "No Topic"}</td> {/* Display Form Type */}
-                      <td>{app.rollNumber || app.rollNo || app.students?.[0]?.rollNo || app.studentDetails?.[0]?.rollNumber || "N/A"}</td>
+                      <td>{app.formType || "No Topic"}</td>
+                      <td>{getRollNumber(app)}</td>
                       <td>{new Date(app.submitted).toLocaleDateString()}</td>
                       <td className={`status ${app.status.toLowerCase()}`}>
                         {app.status}
@@ -60,7 +80,7 @@ const DeptCoordDashboard = () => {
                       <td>
                         <button
                           className="view-btn"
-                          onClick={() => navigate(`/facHome/${app.formId}`)}
+                          onClick={() => handleViewForm(app.formType, app.formId)}
                         >
                           View Form
                         </button>

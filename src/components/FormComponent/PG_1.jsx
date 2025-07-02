@@ -1,7 +1,26 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef ,  useCallback } from 'react'; // Import useRef
 import axios from "axios";
 
-const PG_1 = ({ viewOnly = false , data = null }) => {
+// No need for FILE_DOWNLOAD_BASE_URL here. The backend provides the full URL.
+
+const PG_1 = ({ viewOnly = false, data = null }) => {
+  const [messageBox, setMessageBox] = useState({ visible: false, text: '', type: '' });
+
+  const showMessageBox = (text, type) => {
+    setMessageBox({ visible: true, text, type });
+    setTimeout(() => {
+      setMessageBox({ visible: false, text: '', type: '' });
+    }, 3000);
+  };
+
+  const originalReceiptCopyRef = useRef(null);
+  const originalAdditionalDocumentsRef = useRef(null);
+  const originalGuideSignatureRef = useRef(null);
+  const originalPdfDocumentsRef = useRef([]);
+  const originalZipFilesRef = useRef([]);
+
+  const [formId, setFormId] = useState(null);
+
   const [formData, setFormData] = useState(() => {
     if (viewOnly && data) {
       return {
@@ -13,8 +32,8 @@ const PG_1 = ({ viewOnly = false , data = null }) => {
         guideName: data.guideName || '',
         coGuideName: data.coGuideName || '',
         numberOfDays: data.numberOfDays || '',
-        dateFrom: data.dateFrom || '',
-        dateTo: data.dateTo || '',
+        dateFrom: data.dateFrom ? data.dateFrom.split('T')[0] : '',
+        dateTo: data.dateTo ? data.dateTo.split('T')[0] : '',
         organization: data.organization || '',
         reason: data.reason || '',
         knowledgeUtilization: data.knowledgeUtilization || '',
@@ -28,83 +47,154 @@ const PG_1 = ({ viewOnly = false , data = null }) => {
         },
         registrationFee: data.registrationFee || '',
         previousClaim: data.previousClaim || 'No',
-        claimDate: data.claimDate || '',
+        claimDate: data.claimDate ? data.claimDate.split('T')[0] : '',
         amountReceived: data.amountReceived || '',
         amountSanctioned: data.amountSanctioned || '',
         status: data.status || 'pending',
         svvNetId: data.svvNetId || '',
       };
     }
-    // Defaults if not viewOnly or no data
     return {
-      studentName: '',
-      yearOfAdmission: '',
-      feesPaid: 'No',
-      department: '', 
-      sttpTitle: '',
-      guideName: '',
-      coGuideName: '',
-      numberOfDays: '',
-      dateFrom: '',
-      dateTo: '',
-      organization: '',
-      reason: '',
-      knowledgeUtilization: '',
-      bankDetails: {
-        beneficiary: '',
-        ifsc: '',
-        bankName: '',
-        branch: '',
-        accountType: '',
-        accountNumber: ''
-      },
-      registrationFee: '',
-      previousClaim: 'No',
-      claimDate: '',
-      amountReceived: '',
-      amountSanctioned: '',
-      status: 'pending',
-      svvNetId: '',
+      studentName: '', yearOfAdmission: '', feesPaid: 'No', department: '', sttpTitle: '',
+      guideName: '', coGuideName: '', numberOfDays: '', dateFrom: '', dateTo: '',
+      organization: '', reason: '', knowledgeUtilization: '',
+      bankDetails: { beneficiary: '', ifsc: '', bankName: '', branch: '', accountType: '', accountNumber: '' },
+      registrationFee: '', previousClaim: 'No', claimDate: '', amountReceived: '',
+      amountSanctioned: '', status: 'pending', svvNetId: '',
     };
   });
 
-  // files state: single files + multiple PDFs and ZIPs (max limits enforced)
-  const [files, setFiles] = useState(() => {
-    if (viewOnly && data) {
-      return {
-        receiptCopy: null,
-        guideSignature: null,
-        additionalDocuments: null,
-        pdfDocuments: [],
-        zipFiles: []
-      };
+  const [files, setFiles] = useState({
+    receiptCopy: [],
+    additionalDocuments: [],
+    guideSignature: [],
+    pdfDocuments: [],
+    zipFiles: []
+  });
+
+  const [userRole, setUserRole] = useState('student');
+  const isStudent = userRole === 'student';
+
+  useEffect(() => {
+    const userString = localStorage.getItem("user");
+    if (userString) {
+      try {
+        const user = JSON.parse(userString);
+        setUserRole(user.role || 'student');
+      } catch (e) {
+        console.error("❌ Failed to parse user data from localStorage:", e);
+        showMessageBox("User session corrupted. Please log in again.", "error");
+        setUserRole('student');
+      }
+    } else {
+      setUserRole('student');
     }
-    return {
-      receiptCopy: null,
-      additionalDocuments: null,
-      guideSignature: null,
-      pdfDocuments: [],
-      zipFiles: []
-    };
-  });
+  }, []);
 
-  // Handlers for form inputs
+  useEffect(() => {
+    if (data) {
+      setFormId(data._id || null);
+      setFormData(prev => ({
+        ...prev,
+        studentName: data.studentName || '',
+        yearOfAdmission: data.yearOfAdmission || '',
+        feesPaid: data.feesPaid || 'No',
+        department: data.department || '',
+        sttpTitle: data.sttpTitle || '',
+        guideName: data.guideName || '',
+        coGuideName: data.coGuideName || '',
+        numberOfDays: data.numberOfDays || '',
+        dateFrom: data.dateFrom ? data.dateFrom.split('T')[0] : '',
+        dateTo: data.dateTo ? data.dateTo.split('T')[0] : '',
+        organization: data.organization || '',
+        reason: data.reason || '',
+        knowledgeUtilization: data.knowledgeUtilization || '',
+        bankDetails: {
+          beneficiary: data.bankDetails?.beneficiary || '',
+          ifsc: data.bankDetails?.ifsc || '',
+          bankName: data.bankDetails?.bankName || '',
+          branch: data.bankDetails?.branch || '',
+          accountType: data.bankDetails?.accountType || '',
+          accountNumber: data.bankDetails?.accountNumber || '',
+        },
+        registrationFee: data.registrationFee || '',
+        previousClaim: data.previousClaim || 'No',
+        claimDate: data.claimDate ? data.claimDate.split('T')[0] : '',
+        amountReceived: data.amountReceived || '',
+        amountSanctioned: data.amountSanctioned || '',
+        status: data.status || 'pending',
+        svvNetId: data.svvNetId || '',
+      }));
+
+      const incomingFiles = data.files || {};
+
+      setFiles({
+        receiptCopy: incomingFiles.receiptCopy ? [incomingFiles.receiptCopy] : [],
+        additionalDocuments: incomingFiles.additionalDocuments ? [incomingFiles.additionalDocuments] : [],
+        guideSignature: incomingFiles.guideSignature ? [incomingFiles.guideSignature] : [],
+        pdfDocuments: incomingFiles.pdfDocuments || [],
+        zipFiles: incomingFiles.zipFiles || []
+      });
+
+      originalReceiptCopyRef.current = incomingFiles.receiptCopy || null;
+      originalAdditionalDocumentsRef.current = incomingFiles.additionalDocuments || null;
+      originalGuideSignatureRef.current = incomingFiles.guideSignature || null;
+      originalPdfDocumentsRef.current = incomingFiles.pdfDocuments || [];
+      originalZipFilesRef.current = incomingFiles.zipFiles || [];
+
+    } else {
+      const userString = localStorage.getItem("user");
+      let storedSvvNetId = '';
+      if (userString) {
+        try {
+          const user = JSON.parse(userString);
+          storedSvvNetId = typeof user.svvNetId === "string" ? user.svvNetId : Array.isArray(user.svvNetId) ? user.svvNetId[0] : "";
+        } catch (e) {
+          console.error("Failed to parse user data from localStorage on reset:", e);
+        }
+      }
+
+      setFormId(null);
+      setFormData({
+        studentName: '', yearOfAdmission: '', feesPaid: 'No', department: '', sttpTitle: '',
+        guideName: '', coGuideName: '', numberOfDays: '', dateFrom: '', dateTo: '',
+        organization: '', reason: '', knowledgeUtilization: '',
+        bankDetails: { beneficiary: '', ifsc: '', bankName: '', branch: '', accountType: '', accountNumber: '' },
+        registrationFee: '', previousClaim: 'No', claimDate: '', amountReceived: '',
+        amountSanctioned: '', status: 'pending', svvNetId: storedSvvNetId,
+      });
+      setFiles({
+        receiptCopy: [], additionalDocuments: [], guideSignature: [],
+        pdfDocuments: [], zipFiles: []
+      });
+      originalReceiptCopyRef.current = null;
+      originalAdditionalDocumentsRef.current = null;
+      originalGuideSignatureRef.current = null;
+      originalPdfDocumentsRef.current = [];
+      originalZipFilesRef.current = [];
+    }
+  }, [data]);
+
   const handleChange = (e) => {
     if (viewOnly) return;
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleRemoveFile = (field, index) => {
+  const handleRemoveFile = useCallback((field, index) => {
     setFiles((prev) => {
       const updated = Array.from(prev[field] || []);
+      const fileToRemove = updated[index];
+      if (fileToRemove && fileToRemove.url && fileToRemove.file instanceof File) {
+        URL.revokeObjectURL(fileToRemove.url); // Revoke blob URL for new files
+      }
       updated.splice(index, 1);
       return {
         ...prev,
         [field]: updated,
       };
     });
-  };
+  }, []);
 
   const handleBankChange = (e) => {
     if (viewOnly) return;
@@ -115,102 +205,201 @@ const PG_1 = ({ viewOnly = false , data = null }) => {
     }));
   };
 
-  // Single file input handler with 5MB size limit
   const handleFileChange = (field, e) => {
     if (viewOnly) return;
     const file = e.target.files[0];
-    if (!file) return;
+    if (!file) {
+      setFiles(prev => ({ ...prev, [field]: [] }));
+      return;
+    }
 
     if (file.size > 5 * 1024 * 1024) {
-      alert("File size must be less than 5MB");
+      showMessageBox("File size must be less than 5MB", "warning");
+      e.target.value = null;
+      setFiles(prev => ({ ...prev, [field]: [] }));
       return;
     }
 
     setFiles(prev => ({
       ...prev,
-      [field]: file
+      [field]: [{ file: file, name: file.name, url: URL.createObjectURL(file), size: file.size }]
     }));
   };
 
-  // Multiple PDFs handler with max 5 files, PDF type & size validation
   const handlePdfChange = (e) => {
     if (viewOnly) return;
     const selectedFiles = Array.from(e.target.files);
 
     if (selectedFiles.length > 5) {
-      alert("Maximum 5 PDF files allowed.");
+      showMessageBox("Maximum 5 PDF files allowed.", "warning");
+      e.target.value = null;
       return;
     }
 
+    const newPdfFiles = [];
     for (const file of selectedFiles) {
       if (!file.name.toLowerCase().endsWith(".pdf")) {
-        alert(`"${file.name}" is not a PDF file.`);
+        showMessageBox(`"${file.name}" is not a PDF file.`, "warning");
+        e.target.value = null;
         return;
       }
       if (file.size > 5 * 1024 * 1024) {
-        alert(`"${file.name}" exceeds 5MB size limit.`);
+        showMessageBox(`"${file.name}" exceeds 5MB size limit.`, "warning");
+        e.target.value = null;
         return;
       }
+      newPdfFiles.push({ file: file, name: file.name, url: URL.createObjectURL(file), size: file.size });
     }
 
     setFiles(prev => ({
       ...prev,
-      pdfDocuments: selectedFiles
+      pdfDocuments: newPdfFiles
     }));
   };
 
-  // Multiple ZIPs handler with max 2 files, ZIP type & size validation
   const handleZipChange = (e) => {
     if (viewOnly) return;
     const selectedFiles = Array.from(e.target.files);
 
     if (selectedFiles.length > 2) {
-      alert("Maximum 2 ZIP files allowed.");
+      showMessageBox("Maximum 2 ZIP files allowed.", "warning");
+      e.target.value = null;
       return;
     }
 
+    const newZipFiles = [];
     for (const file of selectedFiles) {
       if (!file.name.toLowerCase().endsWith(".zip")) {
-        alert(`"${file.name}" is not a ZIP file.`);
+        showMessageBox(`"${file.name}" is not a ZIP file.`, "warning");
+        e.target.value = null;
         return;
       }
       if (file.size > 5 * 1024 * 1024) {
-        alert(`"${file.name}" exceeds 5MB size limit.`);
+        showMessageBox(`"${file.name}" exceeds 5MB size limit.`, "warning");
+        e.target.value = null;
         return;
       }
+      newZipFiles.push({ file: file, name: file.name, url: URL.createObjectURL(file), size: file.size });
     }
 
     setFiles(prev => ({
       ...prev,
-      zipFiles: selectedFiles
+      zipFiles: newZipFiles
     }));
   };
 
-  // File preview component for multiple files
-  const FilePreview = ({ files, type, onRemove, showRemoveButton }) => {
-    if (!files || files.length === 0) return null;
+  // The updated FilePreview component
+  const FilePreview = useCallback(({ fileList, onRemove, fieldName }) => {
+    // Do not render anything if viewOnly and student
+    if (viewOnly && isStudent) {
+      return null; // Completely hide the section
+    }
+
+    // Determine if we should show the remove button
+    const showRemoveButton = !viewOnly;
+
+    // Filter out files that shouldn't be displayed
+    const filteredFiles = fileList.filter(fileInfo => {
+      if (!fileInfo || (!fileInfo.url && !fileInfo.fileId && !fileInfo.id && !(fileInfo.file instanceof File))) {
+        return false;
+      }
+      return true;
+    });
+
+    if (filteredFiles.length === 0) {
+      return <p className="text-gray-500 text-sm italic mt-1">No file selected.</p>;
+    }
 
     return (
       <ul className="mt-2 list-disc list-inside space-y-1">
-        {files.map((file, index) => (
-          <li key={index} className="flex items-center justify-between text-sm text-gray-700">
-            <span>{file.name || file.filename}</span>
-            {showRemoveButton && (
-              <button
-                type="button"
-                className="ml-4 text-red-600 hover:underline"
-                onClick={() => onRemove(index)}
-              >
-                Remove
-              </button>
-            )}
-          </li>
-        ))}
+        {filteredFiles.map((fileInfo, index) => {
+          const isUploadedFile = !!(fileInfo.url || fileInfo.fileId || fileInfo.id);
+          const displayUrl = fileInfo.url ||
+                            (fileInfo.fileId ? `/api/pg1form/file/${fileInfo.fileId}` : null) ||
+                            (fileInfo.id ? `/api/pg1form/file/${fileInfo.id}` : null);
+
+          const fileName = fileInfo.name || (fileInfo.filename || (fileInfo.file ? fileInfo.file.name : 'Unnamed File'));
+          const fileSizeMB = fileInfo.file ? (fileInfo.file.size / (1024 * 1024)).toFixed(2) : (fileInfo.size ? (fileInfo.size / (1024 * 1024)).toFixed(2) : 'N/A');
+
+          let linkText;
+          if (viewOnly && isUploadedFile) {
+            // Display custom view text based on fieldName
+            switch (fieldName) {
+              case 'receiptCopy':
+                linkText = "View Receipt Copy";
+                break;
+              case 'additionalDocuments':
+                linkText = "View Additional Document";
+                break;
+              case 'guideSignature':
+                linkText = "View Guide Signature";
+                break;
+              case 'pdfDocuments':
+                linkText = `View Supporting PDF ${index !== null ? index + 1 : ''}`;
+                break;
+              case 'zipFiles':
+                linkText = "View Documents ZIP";
+                break;
+              default:
+                linkText = "View File";
+            }
+          } else {
+            // Show filename and size when NOT viewOnly or file not uploaded yet
+            linkText = `${fileName} (${fileSizeMB} MB)`;
+          }
+
+          return (
+            <li key={fileInfo._id || fileInfo.id || index} className="flex items-center justify-between text-sm text-gray-700 p-1 border rounded bg-gray-50 mb-1">
+              {viewOnly && isUploadedFile ? (
+                <a
+                  href={displayUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:underline flex-grow"
+                >
+                  {linkText}
+                </a>
+              ) : (
+                <span className="flex-grow">{linkText}</span>
+              )}
+
+              {showRemoveButton && (
+                <button
+                  type="button"
+                  className="ml-4 text-red-600 hover:underline"
+                  onClick={() => onRemove(fieldName, index)}
+                >
+                  Remove
+                </button>
+              )}
+            </li>
+          );
+        })}
       </ul>
     );
-  };
+  }, [viewOnly, isStudent, handleRemoveFile]);
 
-  // Submit handler with FormData construction for single + multiple files
+  // Determine if the file uploads section should be visible for a student in viewOnly mode
+  // This now checks against the 'files' state, which includes both new and existing files.
+  // The 'data' prop is implicitly covered by how 'files' state is initialized in useEffect.
+  const hasFilesToDisplay =
+    files.receiptCopy.length > 0 ||
+    files.additionalDocuments.length > 0 ||
+    files.guideSignature.length > 0 ||
+    files.pdfDocuments.length > 0 ||
+    files.zipFiles.length > 0;
+
+  const shouldShowFileUploadsForStudentInViewMode =
+    viewOnly && isStudent && hasFilesToDisplay;
+
+  // Determine if the file uploads section should be visible in general (non-student or not viewOnly)
+  const shouldShowFileUploadsGenerally = !viewOnly || !isStudent;
+
+  // Final condition to render the entire section
+  if (!shouldShowFileUploadsGenerally && !shouldShowFileUploadsForStudentInViewMode) {
+    return null; // Hide the entire section if no files to show for a student in viewOnly
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (viewOnly) return;
@@ -223,7 +412,6 @@ const PG_1 = ({ viewOnly = false , data = null }) => {
     if (userString) {
       try {
         const user = JSON.parse(userString);
-
         svvNetId =
           typeof user.svvNetId === "string"
             ? user.svvNetId
@@ -239,81 +427,130 @@ const PG_1 = ({ viewOnly = false , data = null }) => {
             : "";
       } catch (e) {
         console.error("❌ Failed to parse user data from localStorage:", e);
-        setUserMessage({
-          text: "User session corrupted. Please log in again.",
-          type: "error",
-        });
+        showMessageBox("User session corrupted. Please log in again.", "error");
         return;
       }
     }
 
     if (!svvNetId || !department) {
-      setUserMessage({
-        text: "Authentication error: svvNetId or branch not found. Please log in.",
-        type: "error",
-      });
+      showMessageBox("Authentication error: svvNetId or branch not found. Please log in.", "error");
       return;
     }
 
     try {
       const formPayload = new FormData();
 
-      // ✅ Append user identity fields
       formPayload.append("svvNetId", svvNetId);
       formPayload.append("department", department);
 
-      // 📄 Append form fields except bankDetails and department
       Object.entries(formData).forEach(([key, value]) => {
         if (key !== "bankDetails" && key !== "department") {
           formPayload.append(key, value || "");
         }
       });
 
-      // 🏦 Append bankDetails JSON
       formPayload.append("bankDetails", JSON.stringify(formData.bankDetails || {}));
 
-      // 📎 Required files
-      if (!files.receiptCopy || !files.guideSignature) {
-        alert("Please upload both Receipt Copy and Guide Signature.");
-        return;
+      const handleSingleFileAppend = (fieldName, currentFiles, originalRef) => {
+        if (currentFiles.length > 0 && currentFiles[0].file instanceof File) {
+          formPayload.append(fieldName, currentFiles[0].file);
+        } else if (originalRef.current && !currentFiles.length) {
+          formPayload.append(`${fieldName}Removed`, 'true');
+        } else if (originalRef.current && currentFiles.length > 0 && currentFiles[0]._id === originalRef.current._id) {
+          formPayload.append(`${fieldName}Id`, originalRef.current._id);
+        }
+      };
+
+      handleSingleFileAppend("receiptCopy", files.receiptCopy, originalReceiptCopyRef);
+      handleSingleFileAppend("additionalDocuments", files.additionalDocuments, originalAdditionalDocumentsRef);
+      handleSingleFileAppend("guideSignature", files.guideSignature, originalGuideSignatureRef);
+
+
+      const handleMultipleFilesAppend = (fieldName, currentFiles, originalFilesRef) => {
+        const newFilesToUpload = currentFiles.filter(f => f.file instanceof File);
+        newFilesToUpload.forEach(fileObj => {
+          formPayload.append(fieldName, fileObj.file);
+        });
+
+        const existingFileIdsToKeep = currentFiles
+          .filter(f => f._id && !(f.file instanceof File))
+          .map(f => f._id);
+
+        const originalFileIds = originalFilesRef.current.map(f => f._id);
+
+        const filesRemoved = originalFileIds.filter(id => !existingFileIdsToKeep.includes(id));
+
+        if (existingFileIdsToKeep.length > 0) {
+          formPayload.append(`${fieldName}KeepIds`, JSON.stringify(existingFileIdsToKeep));
+        }
+        if (filesRemoved.length > 0) {
+          formPayload.append(`${fieldName}RemoveIds`, JSON.stringify(filesRemoved));
+        }
+      };
+
+      handleMultipleFilesAppend("pdfDocuments", files.pdfDocuments, originalPdfDocumentsRef);
+      handleMultipleFilesAppend("zipFiles", files.zipFiles, originalZipFilesRef);
+
+      if (!viewOnly) {
+          if (!files.receiptCopy.length && !originalReceiptCopyRef.current) {
+            showMessageBox("Receipt Copy is required.", "warning");
+            return;
+          }
+          if (!files.guideSignature.length && !originalGuideSignatureRef.current) {
+            showMessageBox("Guide Signature is required.", "warning");
+            return;
+          }
       }
 
-      formPayload.append("receiptCopy", files.receiptCopy);
-      formPayload.append("guideSignature", files.guideSignature);
+      const apiEndpoint = formId
+        ? `http://localhost:5000/api/pg1form/update/${formId}`
+        : "http://localhost:5000/api/pg1form/submit";
 
-      // 📎 Optional files
-      if (files.additionalDocuments) {
-        formPayload.append("additionalDocuments", files.additionalDocuments);
+      const httpMethod = formId ? axios.put : axios.post;
+
+      const response = await httpMethod(apiEndpoint, formPayload);
+
+      showMessageBox(`Form ${formId ? 'updated' : 'submitted'} successfully!`, "success");
+      console.log(`✅ Form ${formId ? 'updated' : 'submitted'}:`, response.data);
+
+      if (!formId) {
+        setFormData({
+          studentName: '', yearOfAdmission: '', feesPaid: 'No', department: '', sttpTitle: '',
+          guideName: '', coGuideName: '', numberOfDays: '', dateFrom: '', dateTo: '',
+          organization: '', reason: '', knowledgeUtilization: '',
+          bankDetails: { beneficiary: '', ifsc: '', bankName: '', branch: '', accountType: '', accountNumber: '' },
+          registrationFee: '', previousClaim: 'No', claimDate: '', amountReceived: '',
+          amountSanctioned: '', status: 'pending', svvNetId: svvNetId,
+        });
+        setFiles({
+          receiptCopy: [], additionalDocuments: [], guideSignature: [],
+          pdfDocuments: [], zipFiles: []
+        });
       }
-
-      (files.pdfDocuments || []).slice(0, 5).forEach((file) => {
-        formPayload.append("pdfDocuments", file);
-      });
-
-      (files.zipFiles || []).slice(0, 2).forEach((file) => {
-        formPayload.append("zipFiles", file);
-      });
-
-      // 🚀 Submit form
-      const response = await axios.post("http://localhost:5000/api/pg1form/submit", formPayload);
-
-      alert("Form submitted successfully!");
-      console.log("✅ Submitted:", response.data);
     } catch (error) {
-      console.error("❌ Submit error:", error.response || error.message || error);
-      alert("Failed to submit form. Please check required fields and try again.");
+      console.error("❌ Submit/Update error:", error.response?.data || error.message || error);
+      showMessageBox(`Failed to ${formId ? 'update' : 'submit'} form. Please check required fields and try again.`, "error");
     }
   };
-
   return (
     <div className="form-container max-w-4xl mx-auto p-5 bg-gray-50 rounded-lg shadow-md">
       <h1 className="text-2xl font-bold text-center mb-6 text-gray-800">
         Post Graduate Form 1 - Workshop/STTP {viewOnly && "(View Only)"}
       </h1>
-      
+
+      {/* Custom Message Box */}
+      {messageBox.visible && (
+        <div className={`fixed top-4 right-4 p-4 rounded-md shadow-lg text-white
+          ${messageBox.type === 'success' ? 'bg-green-500' :
+            messageBox.type === 'error' ? 'bg-red-500' :
+            'bg-yellow-500'}`}>
+          {messageBox.text}
+        </div>
+      )}
+
       <div className="mb-8">
         <h2 className="text-xl font-semibold mb-4 text-center underline">Application Form</h2>
-        
+
         {/* Student Information */}
         <table className="w-full mb-6 border border-gray-300">
           <tbody>
@@ -556,7 +793,7 @@ const PG_1 = ({ viewOnly = false , data = null }) => {
           </tbody>
         </table>
 
-        {/* Payment Information */}
+      {/* Payment Information */}
       <table className="w-full mb-6 border border-gray-300">
         <tbody>
           <tr>
@@ -625,162 +862,101 @@ const PG_1 = ({ viewOnly = false , data = null }) => {
           </tr>
         </tbody>
       </table>
-      <div className="mb-6 space-y-4">
-      {!viewOnly ? (
-        <>
+     <hr className="my-6 border-gray-300" />
+      {/* --- File Upload Section --- */}
+      <div className="mb-6 border p-4 rounded shadow-sm">
+          <h3 className="text-lg font-semibold mb-3">File Uploads</h3>
+
           {/* Receipt Copy */}
-          <div>
-            <label className="block font-semibold mb-2">Attach receipt of registration fees:</label>
-            <div className="flex items-center">
-              <label className="bg-blue-500 text-white px-4 py-2 rounded cursor-pointer hover:bg-blue-600">
-                Choose Receipt
-                <input
-                  type="file"
-                  className="hidden"
-                  onChange={(e) => handleFileChange("receiptCopy", e)}
-                  disabled={viewOnly}
-                />
-              </label>
-              <span className="ml-2 text-sm">
-                {files.receiptCopy ? files.receiptCopy.name : "No file chosen"}
-              </span>
-            </div>
+          <div className="mb-4">
+            <label htmlFor="receiptCopy" className="block text-sm font-medium text-gray-700">Receipt Copy (Max 5MB)</label>
+            {!viewOnly && (
+              <input
+                type="file"
+                id="receiptCopy"
+                name="receiptCopy"
+                accept="image/*,.pdf"
+                onChange={(e) => handleFileChange("receiptCopy", e)}
+                className="mt-1 block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none"
+              />
+            )}
+            {/* Using the unified FilePreview component */}
+            <FilePreview fileList={files.receiptCopy} onRemove={handleRemoveFile} fieldName="receiptCopy" />
           </div>
 
           {/* Additional Documents */}
-          <div>
-            <label className="block font-semibold mb-2">Additional Documents:</label>
-            <div className="flex items-center">
-              <label className="bg-blue-500 text-white px-4 py-2 rounded cursor-pointer hover:bg-blue-600">
-                Choose Document
-                <input
-                  type="file"
-                  className="hidden"
-                  onChange={(e) => handleFileChange("additionalDocuments", e)}
-                  disabled={viewOnly}
-                />
-              </label>
-              <span className="ml-2 text-sm">
-                {files.additionalDocuments ? files.additionalDocuments.name : "No file chosen"}
-              </span>
-            </div>
+          <div className="mb-4">
+            <label htmlFor="additionalDocuments" className="block text-sm font-medium text-gray-700">Additional Documents (Max 5MB)</label>
+            {!viewOnly && (
+              <input
+                type="file"
+                id="additionalDocuments"
+                name="additionalDocuments"
+                accept="image/*,.pdf"
+                onChange={(e) => handleFileChange("additionalDocuments", e)}
+                className="mt-1 block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none"
+              />
+            )}
+            <FilePreview fileList={files.additionalDocuments} onRemove={handleRemoveFile} fieldName="additionalDocuments" />
           </div>
 
           {/* Guide Signature */}
-          <div>
-            <label className="block font-semibold mb-2">Guide Signature:</label>
-            <div className="flex items-center">
-              <label className="bg-blue-500 text-white px-4 py-2 rounded cursor-pointer hover:bg-blue-600">
-                Upload Signature
-                <input
-                  type="file"
-                  className="hidden"
-                  onChange={(e) => handleFileChange("guideSignature", e)}
-                  disabled={viewOnly}
-                />
-              </label>
-              <span className="ml-2 text-sm">
-                {files.guideSignature ? files.guideSignature.name : "No file chosen"}
-              </span>
-            </div>
+          <div className="mb-4">
+            <label htmlFor="guideSignature" className="block text-sm font-medium text-gray-700">Guide Signature (Max 5MB)</label>
+            {!viewOnly && (
+              <input
+                type="file"
+                id="guideSignature"
+                name="guideSignature"
+                accept="image/*,.pdf"
+                onChange={(e) => handleFileChange("guideSignature", e)}
+                className="mt-1 block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none"
+              />
+            )}
+            <FilePreview fileList={files.guideSignature} onRemove={handleRemoveFile} fieldName="guideSignature" />
           </div>
 
-          {/* PDF Files (max 5) */}
-          <div>
-            <label className="block font-semibold mb-2">Upload up to 5 PDFs:</label>
-            <div className="flex items-center">
-              <label className="bg-blue-500 text-white px-4 py-2 rounded cursor-pointer hover:bg-blue-600">
-                Choose PDFs
-                <input
-                  type="file"
-                  accept=".pdf"
-                  multiple
-                  className="hidden"
-                  onChange={handlePdfChange}
-                  disabled={viewOnly}
-                />
-              </label>
-              <span className="ml-2 text-sm">
-                {files.pdfDocuments && files.pdfDocuments.length > 0
-                  ? `${files.pdfDocuments.length} file(s) selected`
-                  : "No PDFs selected"}
-              </span>
-            </div>
-            <FilePreview
-              files={files.pdfDocuments}
-              type="PDF"
-              onRemove={(index) => handleRemoveFile("pdfDocuments", index)}
-              showRemoveButton={!viewOnly}
-            />
+          {/* PDF Documents */}
+          <div className="mb-4">
+            <label htmlFor="pdfDocuments" className="block text-sm font-medium text-gray-700">Supporting PDF Documents (Max 5 files, 5MB each, PDF only)</label>
+            {!viewOnly && (
+              <input
+                type="file"
+                id="pdfDocuments"
+                name="pdfDocuments"
+                accept="application/pdf"
+                multiple
+                onChange={handlePdfChange}
+                className="mt-1 block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none"
+              />
+            )}
+            <FilePreview fileList={files.pdfDocuments} onRemove={handleRemoveFile} fieldName="pdfDocuments" />
           </div>
 
-          {/* ZIP Files (max 2) */}
-          <div>
-            <label className="block font-semibold mb-2">Upload up to 2 ZIPs:</label>
-            <div className="flex items-center">
-              <label className="bg-blue-500 text-white px-4 py-2 rounded cursor-pointer hover:bg-blue-600">
-                Choose ZIPs
-                <input
-                  type="file"
-                  accept=".zip"
-                  multiple
-                  className="hidden"
-                  onChange={handleZipChange}
-                  disabled={viewOnly}
-                />
-              </label>
-              <span className="ml-2 text-sm">
-                {files.zipFiles && files.zipFiles.length > 0
-                  ? `${files.zipFiles.length} file(s) selected`
-                  : "No ZIPs selected"}
-              </span>
-            </div>
-            <FilePreview
-              files={files.zipFiles}
-              type="ZIP"
-              onRemove={(index) => handleRemoveFile("zipFiles", index)}
-              showRemoveButton={!viewOnly}
-            />
+          {/* ZIP Files */}
+          <div className="mb-4">
+            <label htmlFor="zipFiles" className="block text-sm font-medium text-gray-700">Additional Documents ZIP (Max 2 files, 5MB each, ZIP only)</label>
+            {!viewOnly && (
+              <input
+                type="file"
+                id="zipFiles"
+                name="zipFiles"
+                accept=".zip,application/zip,application/x-zip-compressed"
+                multiple
+                onChange={handleZipChange}
+                className="mt-1 block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none"
+              />
+            )}
+            <FilePreview fileList={files.zipFiles} onRemove={handleRemoveFile} fieldName="zipFiles" />
           </div>
-        </>
-      ) : (
-        <div className="space-y-3">
-          <div>
-            <label className="font-semibold">Receipt Copy:</label>
-            <span className="ml-2 text-sm text-gray-600">
-              {files.receiptCopy ? files.receiptCopy.name : "No file uploaded"}
-            </span>
-          </div>
-          <div>
-            <label className="font-semibold">Additional Documents:</label>
-            <span className="ml-2 text-sm text-gray-600">
-              {files.additionalDocuments ? files.additionalDocuments.name : "No file uploaded"}
-            </span>
-          </div>
-          <div>
-            <label className="font-semibold">Guide Signature:</label>
-            <span className="ml-2 text-sm text-gray-600">
-              {files.guideSignature ? files.guideSignature.name : "No file uploaded"}
-            </span>
-          </div>
-          <div>
-            <label className="font-semibold">Uploaded PDFs:</label>
-            <FilePreview files={files.pdfDocuments} type="PDF" />
-          </div>
-          <div>
-            <label className="font-semibold">Uploaded ZIPs:</label>
-            <FilePreview files={files.zipFiles} type="ZIP" />
-          </div>
-        </div>
-      )}
       </div>
-
+      {/* --- End File Upload Section --- */}
       {/* Form Actions */}
       <div className="flex justify-between">
         {!viewOnly && (
           <>
             <button onClick={handleSubmit} className="submit-btn bg-green-500 text-white px-6 py-2 rounded hover:bg-green-600">
-              Submit
+              {formId ? "Update Form" : "Submit Form"}
             </button>
             <button onClick={() => window.history.back()} className="back-btn bg-red-500 text-white px-6 py-2 rounded hover:bg-red-600">
               Back

@@ -86,4 +86,101 @@ router.post('/submit', uploadFields, async (req, res) => {
   }
 });
 
+// --- GET Route: Download a specific file by ID ---
+router.get('/file/:fileId', async (req, res) => {
+  try {
+    const fileIdString = req.params.fileId;
+
+    if (!mongoose.Types.ObjectId.isValid(fileIdString)) {
+      console.error('Invalid file ID format received for download:', fileIdString);
+      return res.status(400).json({ error: 'Invalid file ID format. Must be a 24-character hex string.' });
+    }
+
+    const fileId = new mongoose.Types.ObjectId(fileIdString);
+
+    if (!mongoose.connection.readyState) {
+      return res.status(500).json({ error: "MongoDB not connected." });
+    }
+
+    const bucket = gfsBucket || new GridFSBucket(mongoose.connection.db, {
+      bucketName: 'pg2afiles', // Ensure this matches the bucket name used for uploads
+    });
+
+    const files = await bucket.find({ _id: fileId }).toArray();
+    if (!files.length) {
+      return res.status(404).json({ error: "File not found." });
+    }
+
+    const file = files[0];
+
+    res.set('Content-Type', file.contentType || 'application/octet-stream');
+    res.set('Content-Disposition', `inline; filename="${file.filename}"`);
+
+    const downloadStream = bucket.openDownloadStream(fileId);
+
+    downloadStream.on('error', (err) => {
+      console.error('Error in GridFS download stream for file:', fileId, err);
+      res.status(500).json({ error: "Failed to stream file." });
+    });
+
+    downloadStream.pipe(res);
+
+  } catch (error) {
+    console.error("Download error:", error);
+    if (error.name === "BSONTypeError") {
+      return res.status(400).json({ error: "Invalid file ID." });
+    }
+    return res.status(500).json({ error: "Server error while fetching file." });
+  }
+});
+
+// --- GET Route: Get PG2A Form by ID for Frontend Display ---
+router.get('/:id', async (req, res) => {
+  try {
+    const formId = req.params.id;
+
+    if (!mongoose.Types.ObjectId.isValid(formId)) {
+      return res.status(400).json({ message: 'Invalid form ID format.' });
+    }
+
+    const form = await PG2AForm.findById(formId).lean();
+
+    if (!form) {
+      return res.status(404).json({ message: 'Form not found.' });
+    }
+
+    // Helper to add download URLs to file data objects
+    const addFileUrls = (fileData) => {
+      if (!fileData) return null;
+      if (Array.isArray(fileData)) {
+        return fileData.map(f => ({
+          ...f,
+          url: f.id ? `http://localhost:5000/api/pg2aform/file/${f.id}` : null, // Updated URL
+        })).filter(Boolean);
+      } else {
+        return {
+          ...fileData,
+          url: fileData.id ? `http://localhost:5000/api/pg2aform/file/${fileData.id}` : null, // Updated URL
+        };
+      }
+    };
+
+    const formattedForm = {
+      ...form,
+      files: {
+        bills: addFileUrls(form.files?.bills) || [],
+        zips: addFileUrls(form.files?.zips) || [],
+        studentSignature: addFileUrls(form.files?.studentSignature),
+        guideSignature: addFileUrls(form.files?.guideSignature),
+      },
+    };
+
+    res.status(200).json(formattedForm);
+
+  } catch (error) {
+    console.error("❌ Error fetching PG2A form by ID:", error);
+    res.status(500).json({ message: 'Server error fetching form data.', error: error.message });
+  }
+});
+
 export default router;

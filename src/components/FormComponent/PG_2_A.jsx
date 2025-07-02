@@ -1,9 +1,15 @@
-import React, { useState , useEffect} from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 
 const PG_2_A = ({ viewOnly = false, data = null }) => {
+  const [currentUserRole, setCurrentUserRole] = useState(null);
+  const [isLoadingRole, setIsLoadingRole] = useState(true);
+
+  const isNewForm = !data;
+
+  // State for form data
   const [formData, setFormData] = useState(() => {
-    if (viewOnly && data) {
+    if (data) {
       return {
         organizingInstitute: data.organizingInstitute || '',
         projectTitle: data.projectTitle || '',
@@ -21,23 +27,13 @@ const PG_2_A = ({ viewOnly = false, data = null }) => {
               rollNo: student.rollNo || '',
               mobileNo: student.mobileNo || '',
             }))
-          : [{
-              name: '',
-              class: '',
-              division: '',
-              branch: '',
-              rollNo: '',
-              mobileNo: '',
-            }],
+          : [{ name: '', class: '', division: '', branch: '', rollNo: '', mobileNo: '' }],
         expenses: data.expenses?.length
           ? data.expenses.map(expense => ({
               description: expense.description || '',
               amount: expense.amount || '',
             }))
-          : [{
-              description: '',
-              amount: '',
-            }],
+          : [{ description: '', amount: '' }],
         bankDetails: {
           beneficiary: data.bankDetails?.beneficiary || '',
           ifsc: data.bankDetails?.ifsc || '',
@@ -48,309 +44,336 @@ const PG_2_A = ({ viewOnly = false, data = null }) => {
         },
         status: data.status || 'pending',
         svvNetId: data.svvNetId || '',
-      };
-    }
-  
-    // Default values if not viewOnly or no data
-    return {
-      organizingInstitute: '',
-      projectTitle: '',
-      teamName: '',
-      guideName: '',
-      department: '',
-      date: '',
-      hodRemarks: '',
-      studentDetails: [{
-        name: '',
-        class: '',
-        division: '',
-        branch: '',
-        rollNo: '',
-        mobileNo: '',
-      }],
-      expenses: [{
-        description: '',
-        amount: '',
-      }],
-      bankDetails: {
-        beneficiary: '',
-        ifsc: '',
-        bankName: '',
-        branch: '',
-        accountType: '',
-        accountNumber: '',
-      },
-      status: 'pending',
-      svvNetId: '',
-    };
-  });
-  
-  const [files, setFiles] = useState(() => {
-    if (viewOnly && data) {
-      return {
-        bills: data.files?.bills || [],
-        zips: data.files?.zips || [],
-        studentSignature: data.files?.studentSignature || null,
-        guideSignature: data.files?.guideSignature || null,
+        amountClaimed: data.amountClaimed || '',
+        amountRecommended: data.amountRecommended || '',
+        comments: data.comments || '',
+        finalAmount: data.finalAmount || '',
+        formId: data.formId || null,
       };
     }
     return {
-      bills: [],
-      zips: [],
-      studentSignature: null,
-      guideSignature: null,
+      organizingInstitute: '', projectTitle: '', teamName: '', guideName: '', department: '', date: '',
+      hodRemarks: '', studentDetails: [{ name: '', class: '', division: '', branch: '', rollNo: '', mobileNo: '' }],
+      expenses: [{ description: '', amount: '' }],
+      bankDetails: { beneficiary: '', ifsc: '', bankName: '', branch: '', accountType: '', accountNumber: '' },
+      status: 'pending', svvNetId: '', amountClaimed: '', amountRecommended: '', comments: '', finalAmount: '', formId: null,
     };
   });
 
+  // State for files, now explicitly handling existing file URLs/paths and new File objects
+  const [files, setFiles] = useState(() => {
+    if (data) {
+      return {
+        // Map existing file URLs to objects with url, name, and a unique id (using url for simplicity)
+        bills: data.files?.bills?.map(url => ({ url, name: url.split('/').pop(), id: url })) || [],
+        zips: data.files?.zips?.map(url => ({ url, name: url.split('/').pop(), id: url })) || [],
+        studentSignature: data.files?.studentSignature ? { url: data.files.studentSignature, name: data.files.studentSignature.split('/').pop(), id: data.files.studentSignature } : null,
+        guideSignature: data.files?.guideSignature ? { url: data.files.guideSignature, name: data.files.guideSignature.split('/').pop(), id: data.files.guideSignature } : null,
+      };
+    }
+    return {
+      bills: [], zips: [], studentSignature: null, guideSignature: null,
+    };
+  });
+
+  const [userMessage, setUserMessage] = useState(null);
+
+  // Effect to fetch user role from localStorage on component mount
+  useEffect(() => {
+    try {
+      const storedUser = localStorage.getItem('user');
+      if (storedUser) {
+        const user = JSON.parse(storedUser);
+        if (user && user.role) {
+          setCurrentUserRole(user.role);
+        } else {
+          setCurrentUserRole('student'); // Default if role is missing
+        }
+      } else {
+        setCurrentUserRole('student'); // Default if no user data
+      }
+    } catch (error) {
+      console.error("Failed to parse user data from localStorage:", error);
+      setCurrentUserRole('student'); // Fallback on error
+    } finally {
+      setIsLoadingRole(false);
+    }
+  }, []);
+
+  // Effect to calculate total amount claimed when expenses change
+  useEffect(() => {
+    const totalClaimed = formData.expenses
+      .reduce((sum, expense) => sum + (parseFloat(expense.amount) || 0), 0)
+      .toFixed(2);
+    setFormData(prev => ({ ...prev, amountClaimed: totalClaimed }));
+  }, [formData.expenses]);
+
+  // Helper function to determine if a field is editable based on role and viewOnly prop
+  const canEditField = (fieldName) => {
+    if (viewOnly) return false;
+    if (isLoadingRole || !currentUserRole) return false;
+
+    if (currentUserRole === 'student') {
+      const studentEditableFields = [
+        'organizingInstitute', 'projectTitle', 'teamName', 'guideName', 'department', 'date',
+        'studentDetails', 'expenses', 'bankDetails', 'svvNetId',
+        'studentSignature', 'bills', 'zips'
+      ];
+      // Students can only edit if it's a new form or if the form status allows (e.g., 'draft' or 'pending' before first approval)
+      // For simplicity, assuming students can edit if it's a new form. For existing forms, they might need specific status.
+      return isNewForm && studentEditableFields.includes(fieldName);
+    }
+
+    if (currentUserRole === 'guide') {
+      const guideEditableFields = ['guideSignature', 'hodRemarks']; // Guide might add remarks for HOD
+      return guideEditableFields.includes(fieldName);
+    }
+
+    if (currentUserRole === 'hod') {
+      const hodEditableFields = [
+        'hodRemarks', 'status', 'amountRecommended', 'comments', 'finalAmount'
+      ];
+      return hodEditableFields.includes(fieldName);
+    }
+
+    if (currentUserRole === 'admin') {
+      return true; // Admin can edit all fields
+    }
+
+    return false;
+  };
+
+  // Generic handler for text inputs
   const handleChange = (e) => {
     const { name, value } = e.target;
-    if (!viewOnly) {
+    if (canEditField(name)) {
       setFormData(prev => ({ ...prev, [name]: value }));
     }
   };
 
   const handleStudentChange = (index, field, value) => {
-    if (viewOnly) return;
+    if (!canEditField('studentDetails')) return;
     const newStudents = [...formData.studentDetails];
     newStudents[index][field] = value;
     setFormData(prev => ({ ...prev, studentDetails: newStudents }));
   };
 
   const handleExpenseChange = (index, field, value) => {
-    if (viewOnly) return;
-  
-    // Validate amount input
+    if (!canEditField('expenses')) return;
     if (field === 'amount') {
-      // Allow empty string (for clearing input)
-      if (value !== '') {
-        // Prevent non-numeric or negative
-        const num = Number(value);
-        if (isNaN(num) || num < 0) return;
-        value = num; // convert to number for consistent type
-      }
+      const num = Number(value);
+      if (value !== '' && (isNaN(num) || num < 0)) return;
+      value = num;
     }
     const newExpenses = [...formData.expenses];
-    newExpenses[index] = {
-      ...newExpenses[index],
-      [field]: value,
-    };
+    newExpenses[index] = { ...newExpenses[index], [field]: value };
     setFormData(prev => ({ ...prev, expenses: newExpenses }));
   };
 
   const handleBankChange = (e) => {
     const { name, value } = e.target;
-    if (!viewOnly) {
-      setFormData(prev => ({
-        ...prev,
-        bankDetails: { ...prev.bankDetails, [name]: value }
-      }));
-    }
-  };
-
-  const handleFileChange = (field, event) => {
-    const selectedFiles = event.target.files;
-  
-    setFiles((prevFiles) => {
-      if (field === 'bills' || field === 'zips') {
-        return {
-          ...prevFiles,
-          [field]: [...prevFiles[field], ...Array.from(selectedFiles)],
-        };
-      } else {
-        return {
-          ...prevFiles,
-          [field]: selectedFiles[0],
-        };
-      }
-    });
-  };
-
-  const addStudent = () => {
-    if (viewOnly) return;
+    if (!canEditField('bankDetails')) return;
     setFormData(prev => ({
       ...prev,
-      studentDetails: [...prev.studentDetails, {
-        name: '',
-        class: '',
-        division: '',
-        branch: '',
-        rollNo: '',
-        mobileNo: ''
-      }]
+      bankDetails: { ...prev.bankDetails, [name]: value }
     }));
   };
 
+  // Remove file handler: handles both File objects and string paths
+  const removeFile = (fileType, index = null) => {
+    if (!canEditField(fileType)) return;
+
+    setFiles((prevFiles) => {
+      if (fileType === 'bills' || fileType === 'zips') {
+        const updatedFiles = [...prevFiles[fileType]];
+        updatedFiles.splice(index, 1);
+        return { ...prevFiles, [fileType]: updatedFiles };
+      } else if (fileType === 'studentSignature' || fileType === 'guideSignature') {
+        return { ...prevFiles, [fileType]: null };
+      }
+      return prevFiles; // Should not happen
+    });
+  };
+
+  // Handle file inputs: now distinguishes between new File objects and existing string paths
+  const handleFileChange = (field, event) => {
+    if (!canEditField(field)) return;
+    const selectedFiles = Array.from(event.target.files);
+
+    setFiles((prevFiles) => {
+      if (field === 'bills' || field === 'zips') {
+        // Keep existing files (those with 'url' or 'id')
+        const existingFiles = prevFiles[field].filter(f => f.url || f.id);
+        // Map new File objects to the new structure
+        const newFileObjects = selectedFiles.map(file => ({ file, name: file.name, size: file.size }));
+        const combinedFiles = [...existingFiles, ...newFileObjects];
+
+        if (field === 'bills' && combinedFiles.length > 5) {
+          setUserMessage({ text: 'You can upload a maximum of 5 PDF files for bills.', type: 'error' });
+          return prevFiles;
+        }
+        if (field === 'zips' && combinedFiles.length > 2) {
+          setUserMessage({ text: 'You can upload a maximum of 2 ZIP files.', type: 'error' });
+          return prevFiles;
+        }
+        return { ...prevFiles, [field]: combinedFiles };
+      } else { // For single signature files
+        const newSignatureFile = selectedFiles[0] ? { file: selectedFiles[0], name: selectedFiles[0].name, size: selectedFiles[0].size } : null;
+        return { ...prevFiles, [field]: newSignatureFile };
+      }
+    });
+    setUserMessage(null);
+  };
+
+  const addStudent = () => {
+    if (!canEditField('studentDetails')) return;
+    setFormData(prev => ({
+      ...prev,
+      studentDetails: [...prev.studentDetails, { name: '', class: '', division: '', branch: '', rollNo: '', mobileNo: '' }]
+    }));
+  };
+
+  const removeStudent = (index) => {
+    if (!canEditField('studentDetails')) return;
+    const updatedStudents = [...formData.studentDetails];
+    updatedStudents.splice(index, 1);
+    setFormData({ ...formData, studentDetails: updatedStudents });
+  };
+
   const addExpense = () => {
-    if (viewOnly) return;
+    if (!canEditField('expenses')) return;
     setFormData(prev => ({
       ...prev,
       expenses: [...prev.expenses, { description: '', amount: '' }],
     }));
   };
 
+  const removeExpense = (index) => {
+    if (!canEditField('expenses')) return;
+    const updatedExpenses = [...formData.expenses];
+    updatedExpenses.splice(index, 1);
+    setFormData({ ...formData, expenses: updatedExpenses });
+  };
+
+  // Form validation logic
   const validateForm = () => {
-    // Validate basic required text fields
-    const requiredFields = [
-      "projectTitle",
-      "teamName",
-      "guideName",
-      "department",
-      "organizingInstitute"
-    ];
-    for (const field of requiredFields) {
-      if (!formData[field] || formData[field].toString().trim() === "") {
-        alert(`Please fill the field: ${field}`);
+    // Only validate fields relevant to the student for initial submission
+    if (currentUserRole === 'student' && isNewForm) {
+      const requiredFields = [
+        "projectTitle", "teamName", "guideName", "department", "organizingInstitute"
+      ];
+      for (const field of requiredFields) {
+        if (!formData[field] || formData[field].toString().trim() === "") {
+          setUserMessage({ text: `Please fill the field: ${field}`, type: 'error' });
+          return false;
+        }
+      }
+
+      if (!formData.studentDetails || formData.studentDetails.length === 0) {
+        setUserMessage({ text: "Please add at least one student detail.", type: 'error' });
+        return false;
+      }
+      for (let i = 0; i < formData.studentDetails.length; i++) {
+        const student = formData.studentDetails[i];
+        if (!student.name || student.name.trim() === "" || !student.class || student.class.trim() === "" ||
+            !student.division || student.division.trim() === "" || !student.branch || student.branch.trim() === "" ||
+            !student.rollNo || student.rollNo.trim() === "" || !student.mobileNo || !/^\d{10}$/.test(student.mobileNo.trim())) {
+          setUserMessage({ text: `Student ${i + 1}: All fields (Name, Class, Div, Branch, Roll No., Mobile No.) are required and Mobile No. must be 10 digits.`, type: 'error' });
+          return false;
+        }
+      }
+
+      if (!formData.expenses || formData.expenses.length === 0) {
+        setUserMessage({ text: "Please add at least one expense detail.", type: 'error' });
+        return false;
+      }
+      for (let i = 0; i < formData.expenses.length; i++) {
+        const expense = formData.expenses[i];
+        if (!expense.description || expense.description.trim() === "" ||
+            expense.amount === undefined || expense.amount === null || expense.amount === "" ||
+            isNaN(expense.amount) || Number(expense.amount) <= 0) {
+          setUserMessage({ text: `Expense ${i + 1}: Description and positive Amount are required.`, type: 'error' });
+          return false;
+        }
+      }
+
+      const bank = formData.bankDetails || {};
+      if (!bank.beneficiary || bank.beneficiary.trim() === "" || !bank.ifsc || !/^[A-Za-z]{4}\d{7}$/.test(bank.ifsc.trim()) ||
+          !bank.bankName || bank.bankName.trim() === "" || !bank.branch || bank.branch.trim() === "" ||
+          !bank.accountType || bank.accountType.trim() === "" || !bank.accountNumber || !/^\d{9,18}$/.test(bank.accountNumber.trim())) {
+        setUserMessage({ text: "All bank details (Beneficiary, IFSC, Bank Name, Branch, Account Type, Account Number) are required and must be valid.", type: 'error' });
+        return false;
+      }
+
+      if (!files.bills || files.bills.length === 0) {
+        setUserMessage({ text: "Please upload at least one Bill PDF file.", type: 'error' });
+        return false;
+      }
+      if (files.bills.length > 5) {
+        setUserMessage({ text: "You can upload maximum 5 Bill PDF files.", type: 'error' });
+        return false;
+      }
+      for (let file of files.bills) {
+        // Only validate type for new File objects, assume existing URLs are valid
+        if (file.file instanceof File && file.file.type !== "application/pdf") {
+          setUserMessage({ text: `Bill file ${file.name} must be a PDF.`, type: 'error' });
+          return false;
+        }
+      }
+
+      if (files.zips && files.zips.length > 2) {
+        setUserMessage({ text: "You can upload maximum 2 ZIP files.", type: 'error' });
+        return false;
+      }
+      for (let file of files.zips || []) {
+        if (file.file instanceof File && !file.file.name.toLowerCase().endsWith(".zip")) {
+          setUserMessage({ text: `ZIP file ${file.name} must have .zip extension.`, type: 'error' });
+          return false;
+        }
+      }
+
+      if (!files.studentSignature || (files.studentSignature.file instanceof File && !files.studentSignature.file.type.startsWith("image/"))) {
+        setUserMessage({ text: "Please upload Student Signature image.", type: 'error' });
+        return false;
+      }
+
+      if (!files.guideSignature || (files.guideSignature.file instanceof File && !files.guideSignature.file.type.startsWith("image/"))) {
+        setUserMessage({ text: "Please upload Guide Signature image.", type: 'error' });
         return false;
       }
     }
-    if (!formData.expenses || formData.expenses.length === 0) {
-      alert("Please add at least one expense.");
-      return false;
-    }
-    // Validate studentDetails array
-    if (!formData.studentDetails || formData.studentDetails.length === 0) {
-      alert("Please add at least one student detail.");
-      return false;
-    }
-    for (let i = 0; i < formData.studentDetails.length; i++) {
-      const student = formData.studentDetails[i];
-      if (!student.name || student.name.trim() === "") {
-        alert(`Student ${i + 1}: Name is required.`);
-        return false;
-      }
-      if (!student.class || student.class.trim() === "") {
-        alert(`Student ${i + 1}: Class is required.`);
-        return false;
-      }
-      if (!student.division || student.division.trim() === "") {
-        alert(`Student ${i + 1}: Division is required.`);
-        return false;
-      }
-      if (!student.branch || student.branch.trim() === "") {
-        alert(`Student ${i + 1}: Branch is required.`);
-        return false;
-      }
-      if (!student.rollNo || student.rollNo.trim() === "") {
-        alert(`Student ${i + 1}: Roll Number is required.`);
-        return false;
-      }
-      if (!student.mobileNo || !/^\d{10}$/.test(student.mobileNo.trim())) {
-        alert(`Student ${i + 1}: Valid 10-digit Mobile Number is required.`);
+    if (currentUserRole === 'hod') {
+      if (formData.status === 'rejected' && (!formData.hodRemarks || formData.hodRemarks.trim() === '')) {
+        setUserMessage({ text: 'HOD Remarks are required if the status is rejected.', type: 'error' });
         return false;
       }
     }
-  
-    // Validate expenses array
-    if (!formData.expenses || formData.expenses.length === 0) {
-      alert("Please add at least one expense detail.");
-      return false;
-    }
-    for (let i = 0; i < formData.expenses.length; i++) {
-      const expense = formData.expenses[i];
-      if (!expense.description || expense.description.trim() === "") {
-        alert(`Expense ${i + 1}: Description is required.`);
-        return false;
-      }
-      if (
-        expense.amount === undefined ||
-        expense.amount === null ||
-        expense.amount === "" ||
-        isNaN(expense.amount) ||
-        Number(expense.amount) <= 0
-      ) {
-        alert(`Expense ${i + 1}: Amount must be a positive number.`);
-        return false;
-      }
-    }
-  
-    // Validate bank details
-    const bank = formData.bankDetails || {};
-    if (!bank.beneficiary || bank.beneficiary.trim() === "") {
-      alert("Bank Beneficiary name, address and mobile number is required.");
-      return false;
-    }
-    if (!bank.ifsc || !/^[A-Za-z]{4}\d{7}$/.test(bank.ifsc.trim())) {
-      alert("Valid IFSC code is required.");
-      return false;
-    }
-    if (!bank.bankName || bank.bankName.trim() === "") {
-      alert("Bank name is required.");
-      return false;
-    }
-    if (!bank.branch || bank.branch.trim() === "") {
-      alert("Bank branch is required.");
-      return false;
-    }
-    if (!bank.accountType || bank.accountType.trim() === "") {
-      alert("Account type is required.");
-      return false;
-    }
-    if (
-      !bank.accountNumber ||
-      !/^\d{9,18}$/.test(bank.accountNumber.trim())
-    ) {
-      alert("Valid bank account number is required (9 to 18 digits).");
-      return false;
-    }
-  
-    // Validate files
-  
-    // bills (array, max 5 PDFs)
-    if (!files.bills || files.bills.length === 0) {
-      alert("Please upload at least one Bill PDF file.");
-      return false;
-    }
-    if (files.bills.length > 5) {
-      alert("You can upload maximum 5 Bill PDF files.");
-      return false;
-    }
-    for (let file of files.bills) {
-      if (file.type !== "application/pdf") {
-        alert(`Bill file ${file.name} must be a PDF.`);
-        return false;
-      }
-    }
-  
-    // zips (array, max 2 ZIP files)
-    if (files.zips && files.zips.length > 2) {
-      alert("You can upload maximum 2 ZIP files.");
-      return false;
-    }
-    for (let file of files.zips || []) {
-      if (!file.name.toLowerCase().endsWith(".zip")) {
-        alert(`ZIP file ${file.name} must have .zip extension.`);
-        return false;
-      }
-    }
-  
-    // studentSignature (required image)
-    if (!files.studentSignature) {
-      alert("Please upload Student Signature image.");
-      return false;
-    }
-    if (!files.studentSignature.type.startsWith("image/")) {
-      alert("Student Signature must be an image file.");
-      return false;
-    }
-  
-    // guideSignature (required image)
-    if (!files.guideSignature) {
-      alert("Please upload Guide Signature image.");
-      return false;
-    }
-    if (!files.guideSignature.type.startsWith("image/")) {
-      alert("Guide Signature must be an image file.");
-      return false;
-    }
-  
-    // All validations passed
+
+    setUserMessage(null);
     return true;
   };
 
+  // Handle form submission/update
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (viewOnly) return;
+
+    if (isLoadingRole) {
+      setUserMessage({ text: 'User role is still loading. Please wait.', type: 'error' });
+      return;
+    }
+
+    // Check if the user has permission to submit/update any part of the form
+    // This is a general check, more specific checks are in canEditField
+    const canPerformAction = canEditField('organizingInstitute') || canEditField('hodRemarks') ||
+                             canEditField('studentSignature') || canEditField('guideSignature');
+
+    if (!canPerformAction) {
+      setUserMessage({ text: 'You do not have permission to submit/update this form.', type: 'error' });
+      return;
+    }
+
     if (!validateForm()) return;
+
     let svvNetId = null;
     const userString = localStorage.getItem("user");
     if (userString) {
@@ -364,66 +387,227 @@ const PG_2_A = ({ viewOnly = false, data = null }) => {
       }
     }
 
-    // Check if svvNetId is available before attempting to submit
-    if (!svvNetId) {
+    if (!svvNetId && isNewForm) {
       setUserMessage({ text: "Authentication error: User ID (svvNetId) not found. Please log in.", type: "error" });
       return;
     }
+
     try {
       const formPayload = new FormData();
-      formPayload.append('svvNetId',svvNetId);
-      // Append flat string fields
-      [
-        "projectTitle", "teamName", "guideName", "department", "date",
-        "hodRemarks", "organizingInstitute", "amountClaimed", "status",
-        "amountRecommended", "comments", "finalAmount"
-      ].forEach(key => {
-        formPayload.append(key, formData[key] || '');
-      });
-  
-      // Append structured fields
-      formPayload.append("bankDetails", JSON.stringify(formData.bankDetails));
-      formPayload.append("studentDetails", JSON.stringify(formData.studentDetails));
-      formPayload.append("expenses", JSON.stringify(formData.expenses));
-  
-      // Append files
-      (files.bills || []).slice(0, 10).forEach(file => {
-        formPayload.append("bills", file);
-      });
-  
-      if (files.studentSignature) formPayload.append("studentSignature", files.studentSignature);
-      if (files.guideSignature) formPayload.append("guideSignature", files.guideSignature);
-  
-      // Debug payload keys and values (files will just show file names)
-      for (let [key, value] of formPayload.entries()) {
-        console.log(key, value);
+      if (svvNetId) {
+        formPayload.append('svvNetId', svvNetId);
       }
-  
-      const response = await axios.post(
-        "http://localhost:5000/api/pg2aform/submit",
-        formPayload,
-        { headers: { 'Content-Type': 'multipart/form-data' } }
-      );
-  
-      alert("PG2A Form submitted successfully!");
+
+      // Append all form data fields
+      Object.keys(formData).forEach(key => {
+        if (typeof formData[key] === 'object' && formData[key] !== null && !Array.isArray(formData[key])) {
+          formPayload.append(key, JSON.stringify(formData[key]));
+        } else if (Array.isArray(formData[key])) {
+          formPayload.append(key, JSON.stringify(formData[key]));
+        } else {
+          formPayload.append(key, formData[key] || '');
+        }
+      });
+
+      // Append files: differentiate between new File objects and existing URLs
+      (files.bills || []).forEach(fileInfo => {
+        if (fileInfo.file instanceof File) { // Only append new File objects
+          formPayload.append("bills", fileInfo.file);
+        } else if (fileInfo.url || fileInfo.id) { // Append existing file URLs/IDs
+          formPayload.append("existingBills", fileInfo.url || fileInfo.id);
+        }
+      });
+      (files.zips || []).forEach(fileInfo => {
+        if (fileInfo.file instanceof File) {
+          formPayload.append("zips", fileInfo.file);
+        } else if (fileInfo.url || fileInfo.id) {
+          formPayload.append("existingZips", fileInfo.url || fileInfo.id);
+        }
+      });
+
+      if (files.studentSignature) {
+        if (files.studentSignature.file instanceof File) {
+          formPayload.append("studentSignature", files.studentSignature.file);
+        } else if (files.studentSignature.url || files.studentSignature.id) {
+          formPayload.append("existingStudentSignature", files.studentSignature.url || files.studentSignature.id);
+        }
+      }
+
+      if (files.guideSignature) {
+        if (files.guideSignature.file instanceof File) {
+          formPayload.append("guideSignature", files.guideSignature.file);
+        } else if (files.guideSignature.url || files.guideSignature.id) {
+          formPayload.append("existingGuideSignature", files.guideSignature.url || files.guideSignature.id);
+        }
+      }
+
+      const apiUrl = isNewForm
+        ? "http://localhost:5000/api/pg2aform/submit"
+        : `http://localhost:5000/api/pg2aform/update/${formData.formId}`;
+      const httpMethod = isNewForm ? 'POST' : 'PUT';
+
+      const response = await axios({
+        method: httpMethod,
+        url: apiUrl,
+        data: formPayload,
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+
+      setUserMessage({ text: `PG2A Form ${isNewForm ? 'submitted' : 'updated'} successfully!`, type: 'success' });
+      if (isNewForm) {
+        setFormData({ // Reset form for new entry
+          organizingInstitute: '', projectTitle: '', teamName: '', guideName: '', department: '', date: '',
+          hodRemarks: '', studentDetails: [{ name: '', class: '', division: '', branch: '', rollNo: '', mobileNo: '' }],
+          expenses: [{ description: '', amount: '' }], bankDetails: { beneficiary: '', ifsc: '', bankName: '', branch: '', accountType: '', accountNumber: '' },
+          status: 'pending', svvNetId: '', amountClaimed: '', amountRecommended: '', comments: '', finalAmount: '', formId: null,
+        });
+        setFiles({ bills: [], zips: [], studentSignature: null, guideSignature: null });
+      } else {
+        // If updated, refresh files state to reflect new/retained files from backend response if necessary
+        // Assuming the backend returns updated file paths/URLs in a 'files' object
+        if (response.data.files) {
+            setFiles({
+                bills: response.data.files.bills?.map(url => ({ url, name: url.split('/').pop(), id: url })) || [],
+                zips: response.data.files.zips?.map(url => ({ url, name: url.split('/').pop(), id: url })) || [],
+                studentSignature: response.data.files.studentSignature ? { url: response.data.files.studentSignature, name: response.data.files.studentSignature.split('/').pop(), id: response.data.files.studentSignature } : null,
+                guideSignature: response.data.files.guideSignature ? { url: response.data.files.guideSignature, name: response.data.files.guideSignature.split('/').pop(), id: response.data.files.guideSignature } : null,
+            });
+        }
+      }
+
     } catch (error) {
       if (error.response) {
         console.error("Backend error response data:", error.response.data);
-        alert(`Failed to submit PG2A form: ${error.response.data.message || JSON.stringify(error.response.data)}`);
+        setUserMessage({
+          text: `Failed to ${isNewForm ? 'submit' : 'update'} PG2A form: ${error.response.data.message || JSON.stringify(error.response.data)}`,
+          type: 'error'
+        });
       } else {
-        console.error("Error submitting PG2A form:", error);
-        alert("Failed to submit PG2A form. Please check your data and try again.");
+        console.error(`Error ${isNewForm ? 'submitting' : 'updating'} PG2A form:`, error);
+        setUserMessage({
+          text: `Failed to ${isNewForm ? 'submit' : 'update'} PG2A form. Please check your data and try again.`,
+          type: 'error'
+        });
       }
     }
   };
-  
+
+  // Define FilePreview component inside PG_2_A to access its state/props
+  const isStudent = currentUserRole === 'student'; // Derived state for FilePreview
+
+  const FilePreview = useCallback(({ fileList, onRemove, fieldName }) => {
+    // Do not render anything if viewOnly and student for supporting documents
+    const isSupportingDocument = (fieldName === 'bills' || fieldName === 'zips');
+    if (isSupportingDocument && viewOnly && isStudent) {
+      return null; // Completely hide the section
+    }
+
+    // Determine if we should show the remove button based on edit permissions
+    const showRemoveButton = canEditField(fieldName);
+
+    // Filter out files that shouldn't be displayed (e.g., null or empty objects)
+    const filteredFiles = fileList.filter(fileInfo => {
+      // A fileInfo object is valid if it has a 'file' (new upload) or 'url'/'id'/'fileId' (existing)
+      return fileInfo && (fileInfo.file instanceof File || fileInfo.url || fileInfo.fileId || fileInfo.id);
+    });
+
+    if (filteredFiles.length === 0) {
+      return <p className="text-gray-500 text-sm italic mt-1">No file selected.</p>;
+    }
+
+    return (
+      <ul className="mt-2 list-disc list-inside space-y-1">
+        {filteredFiles.map((fileInfo, index) => {
+          // Determine if the file is an already uploaded file (has a URL/ID)
+          const isUploadedFile = !!(fileInfo.url || fileInfo.fileId || fileInfo.id);
+          // Construct the display URL for existing files
+          const displayUrl = fileInfo.url ||
+                             (fileInfo.fileId ? `/api/application/file/${fileInfo.fileId}` : null) || // Updated path
+                             (fileInfo.id ? `/api/application/file/${fileInfo.id}` : null); // Updated path
+
+          // Determine the file name for display
+          const fileName = fileInfo.name || (fileInfo.filename || (fileInfo.file ? fileInfo.file.name : 'Unnamed File'));
+          // Determine file size for display
+          const fileSizeMB = fileInfo.file ? (fileInfo.file.size / (1024 * 1024)).toFixed(2) : (fileInfo.size ? (fileInfo.size / (1024 * 1024)).toFixed(2) : 'N/A');
+
+          let linkText;
+          if (viewOnly && isUploadedFile) {
+            // Display custom view text based on fieldName when in viewOnly mode and file is uploaded
+            switch (fieldName) {
+              case 'bills':
+                linkText = `View Bill ${index !== null ? index + 1 : ''}`;
+                break;
+              case 'zips':
+                linkText = "View Documents ZIP";
+                break;
+              case 'guideSignature':
+                linkText = "View Guide Signature";
+                break;
+              case 'studentSignature':
+                linkText = "View Student Signature";
+                break;
+              default:
+                linkText = "View File";
+            }
+          } else {
+            // Show filename and size when NOT viewOnly or file not uploaded yet
+            linkText = `${fileName} (${fileSizeMB} MB)`;
+          }
+
+          return (
+            <li key={fileInfo._id || fileInfo.id || index} className="flex items-center justify-between text-sm text-gray-700 p-1 border rounded bg-gray-50 mb-1">
+              {viewOnly && isUploadedFile ? (
+                // Render as a clickable link in viewOnly mode for uploaded files
+                <a
+                  href={displayUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:underline flex-grow"
+                >
+                  {linkText}
+                </a>
+              ) : (
+                // Render as plain text otherwise
+                <span className="flex-grow">{linkText}</span>
+              )}
+
+              {showRemoveButton && ( // Show remove button only if editable
+                <button
+                  type="button"
+                  className="ml-4 text-red-600 hover:underline"
+                  onClick={() => onRemove(fieldName, index)} // Call onRemove with fieldName and index
+                >
+                  Remove
+                </button>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    );
+  }, [viewOnly, isStudent, removeFile, canEditField]); // Dependencies for useCallback
+
+  if (isLoadingRole) {
+    return (
+      <div className="form-container max-w-4xl mx-auto p-5 bg-gray-50 rounded-lg shadow-md font-inter text-center py-20">
+        <p className="text-xl text-gray-700">Loading user role...</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="form-container max-w-4xl mx-auto p-5 bg-gray-50 rounded-lg shadow-md">
+    <div className="form-container max-w-4xl mx-auto p-5 bg-gray-50 rounded-lg shadow-md font-inter">
       <h1 className="text-2xl font-bold text-center mb-6 text-gray-800">Post Graduate Form 2A - Project Competition</h1>
-      
+
+      {userMessage && (
+        <div className={`mb-4 p-3 rounded text-center ${userMessage.type === 'error' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+          {userMessage.text}
+        </div>
+      )}
+
       <div className="mb-8">
         <h2 className="text-xl font-semibold mb-4 text-center">Application Form</h2>
-        
+
         {/* Organizing Institute */}
         <div className="mb-6">
           <label className="block font-semibold mb-2">Name and brief address of the organising institute</label>
@@ -432,8 +616,8 @@ const PG_2_A = ({ viewOnly = false, data = null }) => {
             name="organizingInstitute"
             value={formData.organizingInstitute}
             onChange={handleChange}
-            disabled={viewOnly}
-            className="w-full p-2 border border-gray-300 rounded"
+            disabled={!canEditField('organizingInstitute')}
+            className="w-full p-2 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
           />
         </div>
 
@@ -445,8 +629,8 @@ const PG_2_A = ({ viewOnly = false, data = null }) => {
             name="projectTitle"
             value={formData.projectTitle}
             onChange={handleChange}
-            disabled={viewOnly}
-            className="w-full p-2 border border-gray-300 rounded"
+            disabled={!canEditField('projectTitle')}
+            className="w-full p-2 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
           />
         </div>
 
@@ -458,8 +642,8 @@ const PG_2_A = ({ viewOnly = false, data = null }) => {
             name="teamName"
             value={formData.teamName}
             onChange={handleChange}
-            disabled={viewOnly}
-            className="w-full p-2 border border-gray-300 rounded"
+            disabled={!canEditField('teamName')}
+            className="w-full p-2 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
           />
         </div>
 
@@ -471,8 +655,8 @@ const PG_2_A = ({ viewOnly = false, data = null }) => {
             name="guideName"
             value={formData.guideName}
             onChange={handleChange}
-            disabled={viewOnly}
-            className="w-full p-2 border border-gray-300 rounded"
+            disabled={!canEditField('guideName')}
+            className="w-full p-2 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
           />
         </div>
 
@@ -484,15 +668,28 @@ const PG_2_A = ({ viewOnly = false, data = null }) => {
             name="department"
             value={formData.department}
             onChange={handleChange}
-            disabled={viewOnly}
-            className="w-full p-2 border border-gray-300 rounded"
+            disabled={!canEditField('department')}
+            className="w-full p-2 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
+          />
+        </div>
+
+        {/* Date */}
+        <div className="mb-6">
+          <label className="block font-semibold mb-2">Date:</label>
+          <input
+            type="date"
+            name="date"
+            value={formData.date}
+            onChange={handleChange}
+            disabled={!canEditField('date')}
+            className="w-full p-2 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
           />
         </div>
 
         {/* Student Details Table */}
         <div className="mb-6">
           <h3 className="font-semibold mb-2">Student Details</h3>
-          <table className="w-full mb-4 border border-gray-300">
+          <table className="w-full mb-4 border border-gray-300 rounded-md overflow-hidden">
             <thead>
               <tr className="bg-gray-100">
                 <th className="p-2 border border-gray-300">Name of the student</th>
@@ -501,6 +698,9 @@ const PG_2_A = ({ viewOnly = false, data = null }) => {
                 <th className="p-2 border border-gray-300">Branch</th>
                 <th className="p-2 border border-gray-300">Roll No.</th>
                 <th className="p-2 border border-gray-300">Mobile No.</th>
+                {canEditField('studentDetails') && (
+                  <th className="p-2 border border-gray-300">Actions</th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -512,17 +712,28 @@ const PG_2_A = ({ viewOnly = false, data = null }) => {
                         type="text"
                         value={student[field]}
                         onChange={(e) => handleStudentChange(index, field, e.target.value)}
-                        disabled={viewOnly}
-                        className="w-full p-1 border border-gray-300 rounded"
+                        disabled={!canEditField('studentDetails')}
+                        className="w-full p-1 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
                       />
                     </td>
                   ))}
+                  {canEditField('studentDetails') && (
+                    <td className="p-2 border border-gray-300 text-center">
+                      <button
+                        onClick={() => removeStudent(index)}
+                        className="text-red-500 hover:text-red-700 text-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                        disabled={formData.studentDetails.length <= 1}
+                      >
+                        ❌
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
           </table>
-          {!viewOnly && (
-            <button onClick={addStudent} className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+          {canEditField('studentDetails') && (
+            <button onClick={addStudent} className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 shadow-md transition-all duration-200 ease-in-out">
               Add Student
             </button>
           )}
@@ -531,12 +742,15 @@ const PG_2_A = ({ viewOnly = false, data = null }) => {
         {/* Expenses */}
         <div className="mb-6">
           <h3 className="font-semibold mb-2">Details of expenses (attach bills in order):</h3>
-          <table className="w-full mb-4 border border-gray-300">
+          <table className="w-full mb-4 border border-gray-300 rounded-md overflow-hidden">
             <thead>
               <tr className="bg-gray-100">
                 <th className="p-2 border border-gray-300">Sr. No.</th>
                 <th className="p-2 border border-gray-300">Description</th>
                 <th className="p-2 border border-gray-300">Amount (Rs.)</th>
+                {canEditField('expenses') && (
+                  <th className="p-2 border border-gray-300">Actions</th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -548,8 +762,8 @@ const PG_2_A = ({ viewOnly = false, data = null }) => {
                       type="text"
                       value={expense.description}
                       onChange={(e) => handleExpenseChange(index, 'description', e.target.value)}
-                      disabled={viewOnly}
-                      className="w-full p-1 border border-gray-300 rounded"
+                      disabled={!canEditField('expenses')}
+                      className="w-full p-1 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
                     />
                   </td>
                   <td className="p-2 border border-gray-300">
@@ -557,34 +771,44 @@ const PG_2_A = ({ viewOnly = false, data = null }) => {
                       type="number"
                       value={expense.amount}
                       onChange={(e) => handleExpenseChange(index, 'amount', e.target.value)}
-                      disabled={viewOnly}
-                      className="w-full p-1 border border-gray-300 rounded"
+                      disabled={!canEditField('expenses')}
+                      className="w-full p-1 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
                       min="0"
                       step="0.01"
                     />
                   </td>
+                  {canEditField('expenses') && (
+                    <td className="p-2 border border-gray-300 text-center">
+                      <button
+                        onClick={() => removeExpense(index)}
+                        className="text-red-500 hover:text-red-700 text-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                        disabled={formData.expenses.length <= 1}
+                      >
+                        ❌
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
               <tr>
-                <td className="p-2 border border-gray-300 font-semibold">Total</td>
+                <td className="p-2 border border-gray-300 font-semibold">Total Claimed</td>
                 <td className="p-2 border border-gray-300"></td>
-                <td className="p-2 border border-gray-300">
-                  {formData.expenses
-                    .reduce((sum, expense) => sum + (parseFloat(expense.amount) || 0), 0)
-                    .toFixed(2)}
+                <td className="p-2 border border-gray-300 font-bold">
+                  {formData.amountClaimed}
                 </td>
+                {canEditField('expenses') && <td className="p-2 border border-gray-300"></td>}
               </tr>
             </tbody>
           </table>
-          {!viewOnly && (
-            <button onClick={addExpense} className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+          {canEditField('expenses') && (
+            <button onClick={addExpense} className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 shadow-md transition-all duration-200 ease-in-out">
               Add Expense
             </button>
           )}
         </div>
 
         {/* Bank Details */}
-        <table className="w-full mb-6 border border-gray-300">
+        <table className="w-full mb-6 border border-gray-300 rounded-md overflow-hidden">
           <tbody>
             <tr>
               <th className="p-2 border border-gray-300 bg-gray-100" colSpan="2">Bank details for RTGS/NEFT</th>
@@ -605,8 +829,8 @@ const PG_2_A = ({ viewOnly = false, data = null }) => {
                     name={field.name}
                     value={formData.bankDetails[field.name]}
                     onChange={handleBankChange}
-                    disabled={viewOnly}
-                    className="w-full p-1 border border-gray-300 rounded"
+                    disabled={!canEditField('bankDetails')}
+                    className="w-full p-1 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
                   />
                 </td>
               </tr>
@@ -619,96 +843,99 @@ const PG_2_A = ({ viewOnly = false, data = null }) => {
           {/* PDF Bills (max 5) */}
           <div>
             <label className="block font-semibold mb-2">Attach bills (in order of serial no.) – Max 5 PDF files:</label>
-            <div className="flex items-center">
-              <label
-                className={`bg-blue-500 text-white px-4 py-2 rounded cursor-pointer ${
-                  viewOnly ? 'opacity-50 pointer-events-none' : 'hover:bg-blue-600'
-                }`}
-              >
-                Choose PDFs
-                <input
-                  type="file"
-                  className="hidden"
-                  accept="application/pdf"
-                  multiple
-                  disabled={viewOnly}
-                  onChange={(e) => {
-                    const selected = Array.from(e.target.files).filter(file => file.type === 'application/pdf');
-                    if (selected.length + files.bills.length > 5) {
-                      alert('You can upload a maximum of 5 PDF files.');
-                      return;
-                    }
-                    handleFileChange('bills', {
-                      ...e,
-                      target: { ...e.target, files: selected }
-                    });
-                  }}
-                />
-              </label>
-              <span className="ml-2 text-sm">
-                {files.bills.length > 0 ? `${files.bills.length} PDF file${files.bills.length > 1 ? 's' : ''} chosen` : 'No files chosen'}
-              </span>
-            </div>
+            {canEditField('bills') && ( // Only show upload button if editable
+              <div className="flex items-center mb-2">
+                <label
+                  className={`bg-blue-500 text-white px-4 py-2 rounded cursor-pointer shadow-md transition-all duration-200 ease-in-out hover:bg-blue-600`}
+                >
+                  Choose PDFs
+                  <input
+                    type="file"
+                    className="hidden"
+                    accept="application/pdf"
+                    multiple
+                    onChange={(e) => handleFileChange('bills', e)}
+                  />
+                </label>
+                <span className="ml-2 text-sm text-gray-700">
+                  {files.bills.filter(f => f.file instanceof File).length > 0 ? `${files.bills.filter(f => f.file instanceof File).length} new file(s) chosen` : 'No new files chosen'}
+                </span>
+              </div>
+            )}
+            {/* Render FilePreview for bills */}
+            <FilePreview
+              fileList={files.bills}
+              onRemove={removeFile}
+              fieldName="bills"
+              viewOnly={viewOnly}
+              currentUserRole={currentUserRole}
+            />
           </div>
 
           {/* ZIP Files (max 2) */}
           <div>
             <label className="block font-semibold mb-2">Attach additional ZIP files – Max 2:</label>
-            <div className="flex items-center">
-              <label
-                className={`bg-blue-500 text-white px-4 py-2 rounded cursor-pointer ${
-                  viewOnly ? 'opacity-50 pointer-events-none' : 'hover:bg-blue-600'
-                }`}
-              >
-                Choose ZIPs
-                <input
-                  type="file"
-                  className="hidden"
-                  accept=".zip"
-                  multiple
-                  disabled={viewOnly}
-                  onChange={(e) => {
-                    const selected = Array.from(e.target.files).filter(file => file.name.endsWith('.zip'));
-                    if (selected.length + files.zips.length > 2) {
-                      alert('You can upload a maximum of 2 ZIP files.');
-                      return;
-                    }
-                    handleFileChange('zips', {
-                      ...e,
-                      target: { ...e.target, files: selected }
-                    });
-                  }}
-                />
-              </label>
-              <span className="ml-2 text-sm">
-                {files.zips.length > 0 ? `${files.zips.length} ZIP file${files.zips.length > 1 ? 's' : ''} chosen` : 'No files chosen'}
-              </span>
-            </div>
+            {canEditField('zips') && ( // Only show upload button if editable
+              <div className="flex items-center mb-2">
+                <label
+                  className={`bg-blue-500 text-white px-4 py-2 rounded cursor-pointer shadow-md transition-all duration-200 ease-in-out hover:bg-blue-600`}
+                >
+                  Choose ZIPs
+                  <input
+                    type="file"
+                    className="hidden"
+                    accept=".zip"
+                    multiple
+                    onChange={(e) => handleFileChange('zips', e)}
+                  />
+                </label>
+                <span className="ml-2 text-sm text-gray-700">
+                  {files.zips.filter(f => f.file instanceof File).length > 0 ? `${files.zips.filter(f => f.file instanceof File).length} new file(s) chosen` : 'No new files chosen'}
+                </span>
+              </div>
+            )}
+            {/* Render FilePreview for zips */}
+            <FilePreview
+              fileList={files.zips}
+              onRemove={removeFile}
+              fieldName="zips"
+              viewOnly={viewOnly}
+              currentUserRole={currentUserRole}
+            />
           </div>
 
           {/* Signatures */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Student Signature */}
             <div>
               <label className="block font-semibold mb-2">Signature of Student</label>
               <div className="flex items-center">
-                <label
-                  className={`bg-blue-500 text-white px-4 py-2 rounded cursor-pointer ${
-                    viewOnly ? 'opacity-50 pointer-events-none' : 'hover:bg-blue-600'
-                  }`}
-                >
-                  Choose File
-                  <input
-                    type="file"
-                    className="hidden"
-                    accept="image/*"
-                    disabled={viewOnly}
-                    onChange={(e) => handleFileChange('studentSignature', e)}
+                {canEditField('studentSignature') && ( // Only show upload button if editable
+                  <label
+                    className={`bg-blue-500 text-white px-4 py-2 rounded cursor-pointer shadow-md transition-all duration-200 ease-in-out hover:bg-blue-600`}
+                  >
+                    Choose File
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept="image/*"
+                      onChange={(e) => handleFileChange('studentSignature', e)}
+                    />
+                  </label>
+                )}
+                {/* Render FilePreview for studentSignature */}
+                {files.studentSignature && (
+                  <FilePreview
+                    fileList={[files.studentSignature]} // Pass as an array for consistency
+                    onRemove={removeFile}
+                    fieldName="studentSignature"
+                    viewOnly={viewOnly}
+                    currentUserRole={currentUserRole}
                   />
-                </label>
-                <span className="ml-2 text-sm">
-                  {files.studentSignature ? files.studentSignature.name : 'No file chosen'}
-                </span>
+                )}
+                {!files.studentSignature && !canEditField('studentSignature') && (
+                  <span className="ml-2 text-sm text-gray-700">No file chosen</span>
+                )}
               </div>
             </div>
 
@@ -716,39 +943,129 @@ const PG_2_A = ({ viewOnly = false, data = null }) => {
             <div>
               <label className="block font-semibold mb-2">Signature of Guide</label>
               <div className="flex items-center">
-                <label
-                  className={`bg-blue-500 text-white px-4 py-2 rounded cursor-pointer ${
-                    viewOnly ? 'opacity-50 pointer-events-none' : 'hover:bg-blue-600'
-                  }`}
-                >
-                  Choose File
-                  <input
-                    type="file"
-                    className="hidden"
-                    accept="image/*"
-                    disabled={viewOnly}
-                    onChange={(e) => handleFileChange('guideSignature', e)}
+                {canEditField('guideSignature') && ( // Only show upload button if editable
+                  <label
+                    className={`bg-blue-500 text-white px-4 py-2 rounded cursor-pointer shadow-md transition-all duration-200 ease-in-out hover:bg-blue-600`}
+                  >
+                    Choose File
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept="image/*"
+                      onChange={(e) => handleFileChange('guideSignature', e)}
+                    />
+                  </label>
+                )}
+                {/* Render FilePreview for guideSignature */}
+                {files.guideSignature && (
+                  <FilePreview
+                    fileList={[files.guideSignature]} // Pass as an array for consistency
+                    onRemove={removeFile}
+                    fieldName="guideSignature"
+                    viewOnly={viewOnly}
+                    currentUserRole={currentUserRole}
                   />
-                </label>
-                <span className="ml-2 text-sm">
-                  {files.guideSignature ? files.guideSignature.name : 'No file chosen'}
-                </span>
+                )}
+                {!files.guideSignature && !canEditField('guideSignature') && (
+                  <span className="ml-2 text-sm text-gray-700">No file chosen</span>
+                )}
               </div>
             </div>
           </div>
         </div>
-        {/* Form Actions */}
-        <div className="flex justify-between">
-        {!viewOnly && (
-          <>
-            <button onClick={handleSubmit} className="submit-btn bg-green-500 text-white px-6 py-2 rounded hover:bg-green-600">
-              Submit
-            </button>
-            <button onClick={() => window.history.back()} className="back-btn bg-red-500 text-white px-6 py-2 rounded hover:bg-red-600">
-              Back
-            </button>
-          </>
+
+        {/* HOD/Admin Specific Fields (Conditional Rendering) */}
+        {(currentUserRole === 'hod' || currentUserRole === 'admin') && (
+          <div className="mb-6 p-4 border border-gray-300 rounded-lg bg-blue-50 bg-opacity-30">
+            <h3 className="text-lg font-semibold mb-3 text-blue-800">HOD/Admin Review Section</h3>
+
+            <div className="mb-4">
+              <label className="block font-semibold mb-2">HOD Remarks:</label>
+              <textarea
+                name="hodRemarks"
+                value={formData.hodRemarks}
+                onChange={handleChange}
+                disabled={!canEditField('hodRemarks')}
+                rows="3"
+                className="w-full p-2 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
+              ></textarea>
+            </div>
+
+            <div className="mb-4">
+              <label className="block font-semibold mb-2">Status:</label>
+              <select
+                name="status"
+                value={formData.status}
+                onChange={handleChange}
+                disabled={!canEditField('status')}
+                className="w-full p-2 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="pending">Pending</option>
+                <option value="approved">Approved</option>
+                <option value="rejected">Rejected</option>
+                <option value="under_review">Under Review</option>
+              </select>
+            </div>
+
+            <div className="mb-4">
+              <label className="block font-semibold mb-2">Amount Recommended (Rs.):</label>
+              <input
+                type="number"
+                name="amountRecommended"
+                value={formData.amountRecommended}
+                onChange={handleChange}
+                disabled={!canEditField('amountRecommended')}
+                className="w-full p-2 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
+                min="0"
+                step="0.01"
+              />
+            </div>
+
+            <div className="mb-4">
+              <label className="block font-semibold mb-2">Comments:</label>
+              <textarea
+                name="comments"
+                value={formData.comments}
+                onChange={handleChange}
+                disabled={!canEditField('comments')}
+                rows="3"
+                className="w-full p-2 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
+              ></textarea>
+            </div>
+
+            <div className="mb-4">
+              <label className="block font-semibold mb-2">Final Amount (Rs.):</label>
+              <input
+                type="number"
+                name="finalAmount"
+                value={formData.finalAmount}
+                onChange={handleChange}
+                disabled={!canEditField('finalAmount')}
+                className="w-full p-2 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
+                min="0"
+                step="0.01"
+              />
+            </div>
+          </div>
         )}
+
+        {/* Form Actions */}
+        <div className="flex justify-between mt-8">
+          {/* Only show submit/update button if the current role can edit any field related to submission */}
+          {(canEditField('organizingInstitute') || canEditField('hodRemarks') || canEditField('studentSignature') || canEditField('guideSignature')) && (
+            <button
+              onClick={handleSubmit}
+              className="submit-btn bg-green-500 text-white px-6 py-2 rounded hover:bg-green-600 shadow-lg transition-all duration-200 ease-in-out transform hover:scale-105"
+            >
+              {isNewForm ? 'Submit Form' : 'Update Form'}
+            </button>
+          )}
+          <button
+            onClick={() => window.history.back()}
+            className="back-btn bg-red-500 text-white px-6 py-2 rounded hover:bg-red-600 shadow-lg transition-all duration-200 ease-in-out transform hover:scale-105"
+          >
+            Back
+          </button>
         </div>
       </div>
     </div>

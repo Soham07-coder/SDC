@@ -34,6 +34,7 @@ import FacPGForm1 from "./components/FormComponent/FacPG1";
 import FacPG2aForm from "./components/FormComponent/FacPG2a";
 import FacPG2bForm from "./components/FormComponent/FacPG2b";
 import FacR1Form from "./components/FormComponent/FacR1";
+import FormViewer from "./components/FormComponent/FormViewer";
 import FacultyFormViewer from "./components/FormComponent/FacultyFormViewer";
 
 import "./style.css";
@@ -84,6 +85,7 @@ const App = () => {
         <Route path="/fachome/fac-pg2a" element={<FacPG2aForm/>} />
         <Route path="/fachome/fac-pg2b" element={<FacPG2bForm/>} />
         <Route path="/fachome/fac-r1" element={<FacR1Form/>} />
+        <Route path="/facHome/:formType/:formId" element={<FormViewer />} />
         <Route path="/fac/view/:formType/:formId" element={<FacultyFormViewer />} />
         </Routes>
     </Router>
