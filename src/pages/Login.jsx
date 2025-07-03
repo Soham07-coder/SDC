@@ -51,9 +51,9 @@ const Login = () => {
     "vaibhav.vasani@somaiya.edu",
     "swapnil.cp@somaiya.edu",
   ];
-  const DEPT_COORDINATORS = ["swapnil.cp@somaiya.edu","devanshu.de@somaiya.edu","soham.gore@somaiya.edu"];
+  const DEPT_COORDINATORS = ["swapnil.cp@somaiya.edu","devanshu.de@somaiya.edu"];
   const INSTI_COORDINATORS = ["smitasankhe@somaiya.edu","devanshu.des@somaiya.edu"];
-  const HOD_EMAILS = ["devanshu.dev@somaiya.edu"];
+  const HOD_EMAILS = ["devanshu.dev@somaiya.edu","soham.gore@somaiya.edu"];
   const PRINCIPAL_EMAILS = ["principal.kjsce@somaiya.edu","devanshu.desa@somaiya.edu"];
 
   const handleGoogleSuccess = (credentialResponse, role = "Student") => {

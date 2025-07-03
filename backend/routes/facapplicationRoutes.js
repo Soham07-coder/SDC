@@ -957,5 +957,94 @@ router.post("/form/deptCoordDashboard", async (req, res) => {
   }
 });
 
+router.post("/form/instCoordDashboard", async (req, res) => {
+  try {
+    // Fetch all forms from each collection
+    const [
+      ug1Forms,
+      ug2Forms,
+      ug3aForms,
+      ug3bForms,
+      pg1Forms,
+      pg2aForms,
+      pg2bForms,
+      r1Forms,
+    ] = await Promise.all([
+      UG1Form.find().sort({ createdAt: -1 }).lean(),
+      UGForm2.find().sort({ createdAt: -1 }).lean(),
+      UG3AForm.find().sort({ createdAt: -1 }).lean(),
+      UG3BForm.find().sort({ createdAt: -1 }).lean(),
+      PG1Form.find().sort({ createdAt: -1 }).lean(),
+      PG2AForm.find().sort({ createdAt: -1 }).lean(),
+      PG2BForm.find().sort({ createdAt: -1 }).lean(),
+      R1Form.find().sort({ createdAt: -1 }).lean(),
+    ]);
+
+    // Process forms for display, assuming processFormForDisplay is available
+    // This function should add 'topic', 'id' (applicant's roll no), 'submitted' (date), etc.
+    const results = await Promise.all([
+      ...ug1Forms.map((f) => processFormForDisplay(f, "UG_1")),
+      ...ug2Forms.map((f) => processFormForDisplay(f, "UG_2")),
+      ...ug3aForms.map((f) => processFormForDisplay(f, "UG_3_A")),
+      ...ug3bForms.map((f) => processFormForDisplay(f, "UG_3_B")),
+      ...pg1Forms.map((f) => processFormForDisplay(f, "PG_1")),
+      ...pg2aForms.map((f) => processFormForDisplay(f, "PG_2_A")),
+      ...pg2bForms.map((f) => processFormForDisplay(f, "PG_2_B")),
+      ...r1Forms.map((f) => processFormForDisplay(f, "R1")),
+    ]);
+
+    console.log("✅ Total Applications fetched for Institute Coordinator:", results.length);
+    return res.json(results);
+
+  } catch (error) {
+    console.error("❌ Error in /form/instCoordDashboard:", error);
+    return res.status(500).json({ message: "Server error while fetching applications for Institute Coordinator" });
+  }
+});
+
+router.post("/form/hodDashboard", async (req, res) => { // Changed to POST request
+  try {
+    // Fetch all forms from each collection
+    const [
+      ug1Forms,
+      ug2Forms,
+      ug3aForms,
+      ug3bForms,
+      pg1Forms,
+      pg2aForms,
+      pg2bForms,
+      r1Forms,
+    ] = await Promise.all([
+      UG1Form.find().sort({ createdAt: -1 }).lean(),
+      UGForm2.find().sort({ createdAt: -1 }).lean(),
+      UG3AForm.find().sort({ createdAt: -1 }).lean(),
+      UG3BForm.find().sort({ createdAt: -1 }).lean(),
+      PG1Form.find().sort({ createdAt: -1 }).lean(),
+      PG2AForm.find().sort({ createdAt: -1 }).lean(),
+      PG2BForm.find().sort({ createdAt: -1 }).lean(),
+      R1Form.find().sort({ createdAt: -1 }).lean(),
+    ]);
+
+    // Process forms for display, assuming processFormForDisplay is available
+    // This function should add 'topic', 'id' (applicant's roll no), 'submitted' (date), etc.
+    const results = await Promise.all([
+      ...ug1Forms.map((f) => processFormForDisplay(f, "UG_1")),
+      ...ug2Forms.map((f) => processFormForDisplay(f, "UG_2")),
+      ...ug3aForms.map((f) => processFormForDisplay(f, "UG_3_A")),
+      ...ug3bForms.map((f) => processFormForDisplay(f, "UG_3_B")),
+      ...pg1Forms.map((f) => processFormForDisplay(f, "PG_1")),
+      ...pg2aForms.map((f) => processFormForDisplay(f, "PG_2_A")),
+      ...pg2bForms.map((f) => processFormForDisplay(f, "PG_2_B")),
+      ...r1Forms.map((f) => processFormForDisplay(f, "R1")),
+    ]);
+
+    console.log("✅ Total Applications fetched for Institute Coordinator:", results.length);
+    return res.json(results);
+
+  } catch (error) {
+    console.error("❌ Error in /form/instCoordDashboard:", error);
+    return res.status(500).json({ message: "Server error while fetching applications for Institute Coordinator" });
+  }
+});
 
 export default router;

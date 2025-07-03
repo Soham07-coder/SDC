@@ -2,34 +2,48 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import Sidebar from "../components/Sidebar";
+import axios from 'axios'; // Import axios for API calls
 import "../style.css";
 
 const InstCoordDash = () => {
   const [applications, setApplications] = useState([]);
+  const [loading, setLoading] = useState(true); // State to manage loading status
+  const [error, setError] = useState(null); // State to manage any errors during fetching
   const navigate = useNavigate();
 
   useEffect(() => {
-    const pending = JSON.parse(localStorage.getItem("pendingApps")) || [];
-    const approved = JSON.parse(localStorage.getItem("approveApps")) || [];
-    const rejected = JSON.parse(localStorage.getItem("rejectedApps")) || [];
+    const fetchApplications = async () => {
+      try {
+        setLoading(true); // Set loading to true before fetching
+        setError(null); // Clear any previous errors
 
-    const withStatus = (data, status) =>
-      data.map((app) => ({
-        ...app,
-        status,
+        // Make a POST request to your backend endpoint
+        const response = await axios.post("http://localhost:5000/api/facapplication/form/instCoordDashboard");
         
-      }));
+        // Assuming the backend returns an array of applications directly
+        setApplications(response.data);
+      } catch (err) {
+        console.error("Error fetching applications for Institute Coordinator Dashboard:", err);
+        setError("Failed to load applications. Please try again later."); // Set error message
+      } finally {
+        setLoading(false); // Set loading to false after fetching (whether success or error)
+      }
+    };
 
-    const allApps = [
-      ...withStatus(pending, "Pending"),
-      ...withStatus(approved, "Approved"),
-      ...withStatus(rejected, "Rejected"),
-    ];
-
-    setApplications(allApps);
-  }, []);
-
+    fetchApplications();
+  }, []); // Empty dependency array means this effect runs once on component mount
  
+  // Roll number extractor
+  const getRollNumber = (app) => {
+    return (
+      app.rollNumber ||
+      app.rollNo ||
+      app.students?.[0]?.rollNo ||
+      app.studentDetails?.[0]?.rollNumber ||
+      "N/A"
+    );
+  };
+  
   return (
     <>
       <Navbar />
@@ -60,7 +74,7 @@ const InstCoordDash = () => {
                   applications.map((app, index) => (
                     <tr key={index}>
                       <td>{app.topic}</td>
-                      <td>{app.id}</td>
+                      <td>{getRollNumber(app)}</td>
                       <td>{app.submitted}</td>
                       <td className={`status ${app.status.toLowerCase()}`}>
                         {app.status}
