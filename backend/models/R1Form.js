@@ -1,3 +1,4 @@
+// R1Form.js
 import mongoose from "mongoose";
 
 const bankDetailsSchema = new mongoose.Schema({
@@ -13,7 +14,7 @@ const R1FormSchema = new mongoose.Schema({
   svvNetId: { type: String, required: true },
   guideName: { type: String, required: true },
   coGuideName: { type: String, default: '' },
-  employeeCodes: { type: String, required: true },
+  employeeCodes: { type: [String], required: true }, // Changed to array of strings based on parsing in route
   studentName: { type: String, required: true },
   yearOfAdmission: { type: String, required: true },
   branch: { type: String, required: true },
@@ -24,17 +25,8 @@ const R1FormSchema = new mongoose.Schema({
   financeDetails: { type: String, default: '' },
 
   paperTitle: { type: String, default: '' },
-  paperLink: { type: String, default: '' },
-  authors: {
-    type: [String],
-    validate: {
-      validator: function(arr) {
-        return arr.length > 0;
-      },
-      message: 'Authors array must have at least one author.'
-    },
-    required: true,
-  },
+  paperLink: { type: String, default: '' }, // Now accepts any string, including "NO" or empty
+  authors: { type: [String], required: true }, // Array of strings
 
   sttpTitle: { type: String, default: '' },
   organizers: { type: String, default: '' },
@@ -47,23 +39,28 @@ const R1FormSchema = new mongoose.Schema({
   bankDetails: { type: bankDetailsSchema, required: true },
 
   amountClaimed: { type: String, default: '' },
-  finalAmountSanctioned: { type: String, default: '' },
+  // Renamed from finalAmountSanctioned to amountSanctioned to match backend logic
+  amountSanctioned: { type: String, default: '' },
   status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
 
-  proofDocumentFileId: { type: mongoose.Schema.Types.ObjectId, required: true },
-  studentSignatureFileId: { type: mongoose.Schema.Types.ObjectId, required: true },
-  guideSignatureFileId: { type: mongoose.Schema.Types.ObjectId, required: true },
-  hodSignatureFileId: { type: mongoose.Schema.Types.ObjectId, required: true },
+  // === IMPORTANT CHANGES: Updated schema to store full file metadata objects ===
+  proofDocumentFileId: { type: Object }, // Store the full metadata object { id, filename, originalName, mimetype, size }
+  studentSignatureFileId: { type: Object, required: true }, // Store the full metadata object
+  guideSignatureFileId: { type: Object, required: true },   // Store the full metadata object
+  hodSignatureFileId: { type: Object, required: true },     // Store the full metadata object
+  sdcChairpersonSignatureFileId: { type: Object, default: null }, // Store the full metadata object, optional
 
-  pdfFileIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'r1files' }],
-  zipFileId: { type: mongoose.Schema.Types.ObjectId, ref: 'r1files' },
+  pdfFileIds: [{ type: Object }], // Array of full metadata objects
+  zipFileId: { type: Object },    // Store the full metadata object
 
   dateOfSubmission: { type: Date, default: Date.now },
-  remarksByHOD: { type: String, default: '' },
-  remarks: { type: String },
+  remarksByHod: { type: String, default: '' },
+  sdcChairpersonDate: { type: Date, default: null }, // Added for SDC Chairperson date
 
-}, { timestamps: true });
+}, {
+  timestamps: true // Adds createdAt and updatedAt fields automatically
+});
 
-const R1Form = mongoose.model("R1Form", R1FormSchema);
+const R1Form = mongoose.model('R1Form', R1FormSchema);
 
 export default R1Form;

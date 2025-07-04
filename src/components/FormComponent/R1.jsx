@@ -18,7 +18,7 @@ const useUserMessage = () => {
 };
 
 // Placeholder for validation logic (adapt as needed for R1 form)
-const validateForm = (formData, files, viewOnly) => {
+const validateForm = (formData, files, viewOnly, isStudent) => {
   const newErrors = {};
 
   // Example: Check for required fields
@@ -28,13 +28,13 @@ const validateForm = (formData, files, viewOnly) => {
     "numberOfDays", "dateFrom", "dateTo", "registrationFee"
   ];
   for (const field of requiredFields) {
-    if (!formData[field] || (typeof formData[field] === 'string' && formData[field].trim() === '')) {
+    if (!formData[field] || (typeof formData[field] === 'string' && formData[field].trim() === '') || formData[field] === null) {
       newErrors[field] = `${field.replace(/([A-Z])/g, ' $1').toLowerCase()} is required`;
     }
   }
 
-  // File requirements (only for new submissions, not in viewOnly mode)
-  if (!viewOnly) {
+  // File requirements (only for new submissions by students)
+  if (!viewOnly && isStudent) {
       if (!files.studentSignature) newErrors.studentSignature = 'Student signature is required.';
       if (!files.guideSignature) newErrors.guideSignature = 'Guide signature is required.';
       if (!files.hodSignature) newErrors.hodSignature = 'HOD signature is required.';
@@ -68,6 +68,25 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
   // Define the base URL for fetching files from your backend's /file/:fileId route
   const baseFileUrl = 'http://localhost:5000/api/r1form/file'; // Adjust if your R1 file serving route is different
   const [errorMessage, setErrorMessage] = useState("");
+
+  // Determine user role and if student
+  const [currentUserRole, setCurrentUserRole] = useState("");
+  const isStudent = currentUserRole === "student";
+
+  // Effect to load user role from localStorage
+  useEffect(() => {
+    const userString = localStorage.getItem("user");
+    if (userString) {
+      try {
+        const user = JSON.parse(userString);
+        if (user.role) {
+          setCurrentUserRole(user.role);
+        }
+      } catch (e) {
+        console.error("Failed to parse user data from localStorage:", e);
+      }
+    }
+  }, []);
 
   const [formData, setFormData] = useState(() => {
     // Helper to get formatted date string for input type="date"
@@ -111,6 +130,7 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
       finalAmountSanctioned: '',
       status: 'pending',
       svvNetId: '', // Initialize svvNetId
+      sdcChairpersonDate: '', // Added for SDC Chairperson date
     };
 
     if (viewOnly && data) {
@@ -144,6 +164,7 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
         finalAmountSanctioned: data.finalAmountSanctioned || '',
         status: data.status || 'pending',
         svvNetId: data?.svvNetId || '', // FIXED: Added optional chaining here
+        sdcChairpersonDate: getFormattedDate(data.sdcChairpersonDate), // Populate SDC Chairperson date
       };
     }
     return baseFormData;
@@ -152,31 +173,36 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
   const [files, setFiles] = useState(() => {
     // Helper to process a single file metadata object into a frontend-friendly format
     const processSingleFileMetadata = (fileMetadata) => {
-      if (!fileMetadata || !fileMetadata.id) return null;
+      // Handle MongoDB $oid structure
+      const fileId = fileMetadata?.id?.$oid || fileMetadata?.id;
+      if (!fileId) return null;
       return {
         file: null, // Always null for existing files; they are URLs
         name: fileMetadata.originalName || fileMetadata.filename || 'Unknown File',
-        url: `${baseFileUrl}/${fileMetadata.id}`,
-        id: fileMetadata.id // Keep the ID for potential future use or display
+        url: `${baseFileUrl}/${fileId}`, // Use extracted ID
+        id: fileId // Keep the ID for potential future use or display
       };
     };
 
     // Helper to process an array of file metadata objects
     const processMultipleFilesMetadata = (filesArray) => {
       if (!Array.isArray(filesArray)) return [];
-      return filesArray.map(doc => ({
-        file: null, // Always null for existing files; they are URLs
-        name: doc.originalName || doc.filename || 'Unknown Document',
-        url: `${baseFileUrl}/${doc.id}`,
-        id: doc.id
-      }));
+      return filesArray.map(doc => {
+        const fileId = doc?.id?.$oid || doc?.id; // Handle $oid nesting
+        if (!fileId) return null;
+        return {
+          file: null, // Always null for existing files; they are URLs
+          name: doc.originalName || doc.filename || 'Unknown Document',
+          url: `${baseFileUrl}/${fileId}`,
+          id: fileId
+        };
+      }).filter(Boolean); // Filter out any nulls
     };
 
     if (viewOnly && data) {
       return {
         // Access nested file metadata objects from data.proofDocumentFileId etc.
         proofDocument: processSingleFileMetadata(data.proofDocumentFileId),
-        // receiptCopy is not in R1Form backend, removed it from this state for consistency
         studentSignature: processSingleFileMetadata(data.studentSignatureFileId),
         guideSignature: processSingleFileMetadata(data.guideSignatureFileId),
         hodSignature: processSingleFileMetadata(data.hodSignatureFileId),
@@ -187,7 +213,6 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
     }
     return {
       proofDocument: null,
-      // receiptCopy: null, // Removed
       studentSignature: null,
       guideSignature: null,
       hodSignature: null,
@@ -218,23 +243,28 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
     };
 
     const processSingleFileMetadata = (fileMetadata) => {
-      if (!fileMetadata || !fileMetadata.id) return null;
+      const fileId = fileMetadata?.id?.$oid || fileMetadata?.id;
+      if (!fileId) return null;
       return {
         file: null, // Always null for existing files; they are URLs
         name: fileMetadata.originalName || fileMetadata.filename || 'Unknown File',
-        url: `${baseFileUrl}/${fileMetadata.id}`,
-        id: fileMetadata.id // Keep the ID for potential future use or display
+        url: `${baseFileUrl}/${fileId}`,
+        id: fileId
       };
     };
 
     const processMultipleFilesMetadata = (filesArray) => {
       if (!Array.isArray(filesArray)) return [];
-      return filesArray.map(doc => ({
-        file: null, // Always null for existing files; they are URLs
-        name: doc.originalName || doc.filename || 'Unknown Document',
-        url: `${baseFileUrl}/${doc.id}`,
-        id: doc.id
-      }));
+      return filesArray.map(doc => {
+        const fileId = doc?.id?.$oid || doc?.id;
+        if (!fileId) return null;
+        return {
+          file: null, // Always null for existing files; they are URLs
+          name: doc.originalName || doc.filename || 'Unknown Document',
+          url: `${baseFileUrl}/${fileId}`,
+          id: fileId
+        };
+      }).filter(Boolean);
     };
 
     if (viewOnly && data && Object.keys(data).length > 0) {
@@ -268,18 +298,18 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
         finalAmountSanctioned: data.finalAmountSanctioned || '',
         status: data.status || 'pending',
         svvNetId: data.svvNetId || '',
+        sdcChairpersonDate: getFormattedDate(data.sdcChairpersonDate),
       }));
 
       // Populate files state using the new metadata structure from the backend
       setFiles({
         proofDocument: processSingleFileMetadata(data.proofDocumentFileId),
-        // receiptCopy removed from R1Form specific logic
         studentSignature: processSingleFileMetadata(data.studentSignatureFileId),
         guideSignature: processSingleFileMetadata(data.guideSignatureFileId),
         hodSignature: processSingleFileMetadata(data.hodSignatureFileId),
         sdcChairpersonSignature: processSingleFileMetadata(data.sdcChairpersonSignatureFileId),
-        pdfs: processMultipleFilesMetadata(data.pdfFileIds), // Changed to 'pdfs'
-        zipFile: processSingleFileMetadata(data.zipFileId), // Changed to 'zipFile'
+        pdfs: processMultipleFilesMetadata(data.pdfFileIds),
+        zipFile: processSingleFileMetadata(data.zipFileId),
       });
 
       setErrors({});
@@ -295,12 +325,12 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
         dateOfSubmission: '', remarksByHod: '',
         bankDetails: { beneficiary: '', ifsc: '', bankName: '', branch: '', accountType: '', accountNumber: '' },
         amountClaimed: '', finalAmountSanctioned: '', status: 'pending',
-        svvNetId: '',
+        svvNetId: '', sdcChairpersonDate: '',
       });
       setFiles({
-        proofDocument: null, // receiptCopy removed
+        proofDocument: null,
         studentSignature: null, guideSignature: null,
-        hodSignature: null, sdcChairpersonSignature: null, pdfs: [], zipFile: null, // Changed to 'pdfs' and 'zipFile'
+        hodSignature: null, sdcChairpersonSignature: null, pdfs: [], zipFile: null,
       });
       setErrors({});
       setUserMessage({ text: "", type: "" });
@@ -326,8 +356,13 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
   const renderFileDisplay = (fileKey, label) => {
     const file = files[fileKey];
   
+    // If in viewOnly mode AND the current user is a student, do not display files.
+    if (viewOnly && isStudent) {
+      return null;
+    }
+
     if (fileKey === 'pdfs') {
-      if (viewOnly && Array.isArray(file)) {
+      if (viewOnly && Array.isArray(file) && file.length > 0) {
         return (
           <div className="flex flex-col space-y-1">
             {file.map((pdf, i) => (
@@ -337,7 +372,7 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
             ))}
           </div>
         );
-      } else if (!viewOnly) {
+      } else if (!viewOnly) { // Allow upload if not in viewOnly mode
         return (
           <div className="flex flex-col">
             <label className="bg-blue-500 text-white px-4 py-2 rounded cursor-pointer hover:bg-blue-600">
@@ -348,6 +383,7 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
                 accept="application/pdf"
                 onChange={(e) => handleFileChange('pdfs', e)}
                 className="hidden"
+                ref={pdfsRef}
               />
             </label>
             <span className="mt-1 text-sm text-gray-600">
@@ -358,14 +394,14 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
       }
     }
   
-    if (fileKey === 'zip') {
+    if (fileKey === 'zipFile') {
       if (viewOnly && file?.url) {
         return (
           <a href={file.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
-            View ZIP File
+            View ZIP File ({file.name})
           </a>
         );
-      } else if (!viewOnly) {
+      } else if (!viewOnly) { // Allow upload if not in viewOnly mode
         return (
           <div className="flex items-center">
             <label className="bg-blue-500 text-white px-4 py-2 rounded cursor-pointer hover:bg-blue-600">
@@ -373,8 +409,9 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
               <input
                 type="file"
                 accept=".zip"
-                onChange={(e) => handleFileChange('zip', e)}
+                onChange={(e) => handleFileChange('zipFile', e)}
                 className="hidden"
+                ref={zipFileRef}
               />
             </label>
             <span className="ml-2 text-sm text-gray-600">
@@ -384,15 +421,15 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
         );
       }
     }
-  
-    // Default for other single files
-    if (viewOnly && file?.url) {
+
+    // Default for other single files (proofDocument, signatures)
+    if (viewOnly && file?.url) { // If in viewOnly mode and file has a URL, display preview link
       return (
         <a href={file.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
-          View {label}
+          View {label} ({file.name})
         </a>
       );
-    } else if (!viewOnly) {
+    } else if (!viewOnly) { // If not in viewOnly mode, display file input for upload
       return (
         <div className="flex items-center">
           <label className="bg-blue-500 text-white px-4 py-2 rounded cursor-pointer hover:bg-blue-600">
@@ -400,8 +437,15 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
             <input
               type="file"
               className="hidden"
-              accept={fileKey.includes('Signature') ? 'image/*' : '*'}
+              accept={fileKey.includes('Signature') ? 'image/*' : '*'} // Restrict signature to images
               onChange={(e) => handleFileChange(fileKey, e)}
+              ref={
+                fileKey === 'proofDocument' ? proofDocumentRef :
+                fileKey === 'studentSignature' ? studentSignatureRef :
+                fileKey === 'guideSignature' ? guideSignatureRef :
+                fileKey === 'hodSignature' ? hodSignatureRef :
+                fileKey === 'sdcChairpersonSignature' ? sdcChairpersonSignatureRef : null
+              }
             />
           </label>
           <span className="ml-2 text-sm">
@@ -410,17 +454,13 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
         </div>
       );
     }
-  
     return <span className="text-sm text-gray-400">No file uploaded</span>;
   };
 
   const handleBankChange = (e) => {
     if (viewOnly) return;
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      bankDetails: { ...prev.bankDetails, [name]: value }
-    }));
+    setFormData(prev => ({ ...prev, bankDetails: { ...prev.bankDetails, [name]: value } }));
     setErrors(prev => ({ ...prev, [name]: undefined }));
   };
 
@@ -451,24 +491,24 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
         return { ...prev, [field]: null };
       }
     });
-    // Reset file input value
-    if (field === 'proofDocument' && proofDocumentRef.current) proofDocumentRef.current.value = null;
-    if (field === 'studentSignature' && studentSignatureRef.current) studentSignatureRef.current.value = null;
-    if (field === 'guideSignature' && guideSignatureRef.current) guideSignatureRef.current.value = null;
-    if (field === 'hodSignature' && hodSignatureRef.current) hodSignatureRef.current.value = null;
-    if (field === 'sdcChairpersonSignature' && sdcChairpersonSignatureRef.current) sdcChairpersonSignatureRef.current.value = null;
-    if (field === 'pdfs' && pdfsRef.current) pdfsRef.current.value = null;
-    if (field === 'zipFile' && zipFileRef.current) zipFileRef.current.value = null;
-
+    // Reset file input value if (field === 'proofDocument' && proofDocumentRef.current) proofDocumentRef.current.value = null;
+    if (proofDocumentRef.current) proofDocumentRef.current.value = null;
+    if (studentSignatureRef.current) studentSignatureRef.current.value = null;
+    if (guideSignatureRef.current) guideSignatureRef.current.value = null;
+    if (hodSignatureRef.current) hodSignatureRef.current.value = null;
+    if (sdcChairpersonSignatureRef.current) sdcChairpersonSignatureRef.current.value = null;
+    if (pdfsRef.current) pdfsRef.current.value = null;
+    if (zipFileRef.current) zipFileRef.current.value = null;
     setErrors(prev => ({ ...prev, [field]: undefined }));
   };
-
 
   const handleFileChange = (field, event) => {
     if (viewOnly) return;
     const selectedFiles = Array.from(event.target.files);
-
     if (!selectedFiles || selectedFiles.length === 0) return;
+
+    // Clear previous error message related to file upload
+    setUserMessage({ text: "", type: "" });
 
     for (const file of selectedFiles) {
       if (file.size > 25 * 1024 * 1024) {
@@ -476,7 +516,6 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
         if (event.target) event.target.value = null;
         return;
       }
-
       if (field === 'proofDocument' && file.type !== 'application/pdf') {
         setUserMessage({ text: `Proof Document "${file.name}" must be a PDF.`, type: "error" });
         if (event.target) event.target.value = null;
@@ -492,235 +531,167 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
         if (event.target) event.target.value = null;
         return;
       }
-      if (field === 'zipFile' && !['application/zip', 'application/x-zip-compressed'].includes(file.type)) {
+      if (field === 'zipFile' && file.type !== 'application/zip' && file.name.split('.').pop() !== 'zip') {
         setUserMessage({ text: `ZIP file "${file.name}" must be a ZIP archive.`, type: "error" });
         if (event.target) event.target.value = null;
         return;
       }
     }
 
-    if (field === 'pdfs') {
-      const currentPdfs = files.pdfs.filter(f => f instanceof File); // Filter out old URL objects from view mode
-      const allPdfs = [...currentPdfs, ...selectedFiles];
-      if (allPdfs.length > 5) {
-        setUserMessage({ text: "You can upload a maximum of 5 PDF files.", type: "error" });
-        if (event.target) event.target.value = null;
-        return;
+    setFiles((prev) => {
+      if (field === 'pdfs') {
+        const currentPdfs = Array.isArray(prev.pdfs) ? prev.pdfs.filter(f => f.file) : []; // Keep only newly uploaded files
+        const newPdfs = [...currentPdfs, ...selectedFiles.map(file => ({ file, name: file.name }))];
+        if (newPdfs.length > 5) {
+          setUserMessage({ text: "You can upload a maximum of 5 PDF files.", type: "error" });
+          return prev; // Do not update state if limit exceeded
+        }
+        return { ...prev, [field]: newPdfs };
+      } else {
+        return { ...prev, [field]: { file: selectedFiles[0], name: selectedFiles[0].name } };
       }
-      setFiles(prev => ({ ...prev, pdfs: allPdfs }));
-    } else { // Single file fields
-      setFiles(prev => ({ ...prev, [field]: selectedFiles[0] }));
-    }
+    });
     setErrors(prev => ({ ...prev, [field]: undefined }));
   };
 
+  const handleSubmit = async (e) => {
+    e.preventDefault(); // Prevent default form submission
 
-  // --- Form Submission Handler ---
-  const handleSubmit = async () => {
     if (viewOnly) {
       setUserMessage({ text: 'Form is in view-only mode, cannot submit.', type: "error" });
       return;
     }
 
-    const validationErrors = validateForm(formData, files, viewOnly); // Pass files to validateForm
-    setErrors(validationErrors);
+    // Only students can submit
+    if (!isStudent) {
+      setUserMessage({ text: 'Only students are allowed to submit this form.', type: "error" });
+      return;
+    }
 
-    if (Object.keys(validationErrors).length > 0) {
-      setUserMessage({ text: "Please fix the errors in the form before submitting.", type: "error" });
+    const formErrors = validateForm(formData, files, viewOnly, isStudent);
+    if (Object.keys(formErrors).length > 0) {
+      setErrors(formErrors);
+      setUserMessage({ text: "Please correct the errors in the form.", type: "error" });
       return;
     }
 
     setIsSubmitting(true);
-    let svvNetId = null;
-    const userString = localStorage.getItem("user");
-    if (userString) {
-      try {
-        const user = JSON.parse(userString);
-        if (Array.isArray(user.svvNetId)) {
-          svvNetId = user.svvNetId.find(id => id && id.trim() !== '') || '';
-        } else if (typeof user.svvNetId === 'string') {
-          svvNetId = user.svvNetId;
-        } else {
-          console.error("Unexpected type for user.svvNetId in localStorage:", typeof user.svvNetId);
-        }
-      } catch (e) {
-        console.error("Failed to parse user data from localStorage for submission:", e);
-        setUserMessage({ text: "User session corrupted. Please log in again.", type: "error" });
-        setIsSubmitting(false);
-        return;
-      }
-    }
-
-    if (!svvNetId || svvNetId.trim() === '') {
-      setUserMessage({ text: "Authentication error: User ID (svvNetId) not found or invalid. Please log in.", type: "error" });
-      setIsSubmitting(false);
-      return;
-    }
+    setUserMessage({ text: "", type: "" }); // Clear previous messages
 
     const submissionData = new FormData();
 
-    // Append svvNetId
-    submissionData.append('svvNetId', svvNetId);
-
-    // Append form data fields
+    // Append form data
     Object.entries(formData).forEach(([key, value]) => {
-      if (key === 'svvNetId') return; // Already appended
-
-      if (['authors', 'bankDetails', 'employeeCodes'].includes(key)) {
+      if (key === 'authors' || key === 'bankDetails' || key === 'employeeCodes') {
         submissionData.append(key, JSON.stringify(value));
       } else {
         submissionData.append(key, value);
       }
     });
 
-    // --- Append files to FormData based on backend's Multer configuration ---
-    // Single 'proofDocument' file
-    if (files.proofDocument instanceof File) {
-      submissionData.append('proofDocument', files.proofDocument);
-    }
-
-    // Single signature files
-    if (files.studentSignature instanceof File) submissionData.append('studentSignature', files.studentSignature);
-    if (files.guideSignature instanceof File) submissionData.append('guideSignature', files.guideSignature);
-    if (files.hodSignature instanceof File) submissionData.append('hodSignature', files.hodSignature);
-    if (files.sdcChairpersonSignature instanceof File) submissionData.append('sdcChairpersonSignature', files.sdcChairpersonSignature);
-
-    // Multiple PDF files (backend expects 'pdfs')
-    if (Array.isArray(files.pdfs)) {
-      files.pdfs.forEach(file => {
-        if (file instanceof File) {
-          submissionData.append('pdfs', file);
+    // Retrieve svvNetId from localStorage and append
+    let svvNetId = '';
+    const userString = localStorage.getItem("user");
+    if (userString) {
+        try {
+            const user = JSON.parse(userString);
+            // Trim svvNetId immediately after extraction
+            svvNetId = (user.svvNetId || '').trim();
+            if (svvNetId) {
+                submissionData.append('svvNetId', svvNetId);
+            } else {
+                setUserMessage({ text: "User ID (svvNetId) not found or is empty in local storage. Cannot submit.", type: "error" });
+                setIsSubmitting(false);
+                return;
+            }
+        } catch (e) {
+            console.error("Failed to parse user data from localStorage:", e);
+            setUserMessage({ text: "User session corrupted. Please log in again.", type: "error" });
+            setIsSubmitting(false);
+            return;
         }
-      });
+    } else {
+        setUserMessage({ text: "User data not found in local storage. Cannot submit.", type: "error" });
+        setIsSubmitting(false);
+        return;
     }
 
-    // Single ZIP file (backend expects 'zipFile')
-    if (files.zipFile instanceof File) {
-      submissionData.append('zipFile', files.zipFile);
-    }
-    // --- End of file appending ---
+    // Append files
+    if (files.proofDocument?.file) submissionData.append('proofDocument', files.proofDocument.file);
+    if (files.studentSignature?.file) submissionData.append('studentSignature', files.studentSignature.file);
+    if (files.guideSignature?.file) submissionData.append('guideSignature', files.guideSignature.file);
+    if (files.hodSignature?.file) submissionData.append('hodSignature', files.hodSignature.file);
+    if (files.sdcChairpersonSignature?.file) submissionData.append('sdcChairpersonSignature', files.sdcChairpersonSignature.file);
+    if (files.zipFile?.file) submissionData.append('zipFile', files.zipFile.file);
+
+    files.pdfs.forEach((pdfObj, index) => {
+      if (pdfObj.file) { // Only append if it's a new File object
+        submissionData.append(`pdfs`, pdfObj.file);
+      }
+    });
 
     try {
-      const response = await axios.post(
-        'http://localhost:5000/api/r1form/submit',
-        submissionData,
-        { headers: { 'Content-Type': 'multipart/form-data' } }
-      );
+      const response = await axios.post('http://localhost:5000/api/r1form/submit', submissionData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
 
       if (response.status === 200 || response.status === 201) {
-        const responseData = response.data;
-        setUserMessage({ text: `Form submitted successfully! Submission ID: ${responseData.id || 'N/A'}`, type: "success" });
-        console.log('Server response:', responseData);
-        // Reset form for new submission
-        if (!viewOnly) {
-          setFormData(prev => ({
-            ...prev,
-            guideName: '', coGuideName: '', employeeCodes: [], studentName: '', yearOfAdmission: '', branch: '',
-            rollNo: '', mobileNo: '', feesPaid: 'No', receivedFinance: 'No', financeDetails: '',
-            paperTitle: '', paperLink: '', authors: ['', '', '', ''], sttpTitle: '', organizers: '',
-            reasonForAttending: '', numberOfDays: '', dateFrom: '', dateTo: '', registrationFee: '',
-            dateOfSubmission: '', remarksByHod: '',
-            bankDetails: { beneficiary: '', ifsc: '', bankName: '', branch: '', accountType: '', accountNumber: '' },
-            amountClaimed: '', finalAmountSanctioned: '', status: 'pending',
-            svvNetId: '',
-          }));
-          setFiles({
-            proofDocument: null, studentSignature: null, guideSignature: null,
-            hodSignature: null, sdcChairpersonSignature: null, pdfs: [], zipFile: null,
-          });
-          setErrors({});
-          // Clear file input refs
-          if (proofDocumentRef.current) proofDocumentRef.current.value = null;
-          if (studentSignatureRef.current) studentSignatureRef.current.value = null;
-          if (guideSignatureRef.current) guideSignatureRef.current.value = null;
-          if (hodSignatureRef.current) hodSignatureRef.current.value = null;
-          if (sdcChairpersonSignatureRef.current) sdcChairpersonSignatureRef.current.value = null;
-          if (pdfsRef.current) pdfsRef.current.value = null;
-          if (zipFileRef.current) zipFileRef.current.value = null;
-        }
+        setUserMessage({ text: "Form submitted successfully!", type: "success" });
+        // Optionally reset form after successful submission
+        setFormData(prev => ({
+          ...prev,
+          guideName: '', coGuideName: '', employeeCodes: [], studentName: '', yearOfAdmission: '', branch: '',
+          rollNo: '', mobileNo: '', feesPaid: 'No', receivedFinance: 'No', financeDetails: '',
+          paperTitle: '', paperLink: '', authors: ['', '', '', ''], sttpTitle: '', organizers: '',
+          reasonForAttending: '', numberOfDays: '', dateFrom: '', dateTo: '', registrationFee: '',
+          dateOfSubmission: '', remarksByHod: '',
+          bankDetails: { beneficiary: '', ifsc: '', bankName: '', branch: '', accountType: '', accountNumber: '' },
+          amountClaimed: '', finalAmountSanctioned: '', status: 'pending',
+          svvNetId: '', sdcChairpersonDate: '',
+        }));
+        setFiles({
+          proofDocument: null, studentSignature: null, guideSignature: null,
+          hodSignature: null, sdcChairpersonSignature: null, pdfs: [], zipFile: null,
+        });
+        setErrors({});
+        // Clear file input refs
+        if (proofDocumentRef.current) proofDocumentRef.current.value = null;
+        if (studentSignatureRef.current) studentSignatureRef.current.value = null;
+        if (guideSignatureRef.current) guideSignatureRef.current.value = null;
+        if (hodSignatureRef.current) hodSignatureRef.current.value = null;
+        if (sdcChairpersonSignatureRef.current) sdcChairpersonSignatureRef.current.value = null;
+        if (pdfsRef.current) pdfsRef.current.value = null;
+        if (zipFileRef.current) zipFileRef.current.value = null;
+
       } else {
-        const errorData = response.data;
-        console.error('Server responded with error:', response.status, errorData);
-        setUserMessage({ text: `Submission failed: ${errorData.message || errorData.error || 'An unexpected error occurred.'}`, type: "error" });
+        setUserMessage({ text: `Submission failed: ${response.data.message || 'Unknown error'}`, type: "error" });
       }
     } catch (error) {
-      console.error('Error submitting form:', error.response?.data || error.message);
-      let errorMessage = 'Submission failed. Please check your network and try again.';
-      if (error.response?.data?.error) {
-          errorMessage = `Submission failed: ${error.response.data.error}`;
-      } else if (error.response?.data?.message) {
-          errorMessage = `Submission failed: ${error.response.data.message}`;
-      }
-      setUserMessage({ text: errorMessage, type: "error" });
+      console.error('Submission error:', error.response?.data || error.message);
+      setUserMessage({ text: `Submission failed: ${error.response?.data?.message || error.message}`, type: "error" });
     } finally {
       setIsSubmitting(false);
     }
   };
 
-   return (
+  return (
     <div className="form-container max-w-4xl mx-auto p-5 bg-gray-50 rounded-lg shadow-md">
-      <h1 className="text-2xl font-bold text-center mb-6 text-gray-800">
-        Research Form R1 {viewOnly && <span className="text-blue-600">(View Only)</span>}
-      </h1>
-      
-      <div className="mb-8">
-        <h2 className="text-xl font-semibold mb-4 text-center">Application Form</h2>
-        
-        {errorMessage && (
-          <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
-            {errorMessage}
-          </div>
-        )}
-        
-        {/* Guide and Student Information */}
+      <h1 className="text-2xl font-bold text-center mb-6 text-gray-800">R1 Form</h1>
+
+      {userMessage.text && (
+        <div className={`p-3 mb-4 rounded text-center ${userMessage.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+          {userMessage.text}
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit}>
+        {/* Basic Information */}
         <table className="w-full mb-6 border border-gray-300">
           <tbody>
             <tr>
-              <th className="p-2 border border-gray-300 bg-gray-100">Name/s of the guide / co-guide (wherever applicable)</th>
-              <td className="p-2 border border-gray-300">
-                <input
-                  type="text"
-                  name="guideName"
-                  value={formData.guideName}
-                  onChange={handleChange}
-                  disabled={viewOnly}
-                  className="w-full p-1 border border-gray-300 rounded disabled:bg-gray-100"
-                  placeholder="Guide Name"
-                  required
-                />
-                <input
-                  type="text"
-                  name="coGuideName"
-                  value={formData.coGuideName}
-                  onChange={handleChange}
-                  disabled={viewOnly}
-                  className="w-full p-1 border border-gray-300 rounded mt-2 disabled:bg-gray-100"
-                  placeholder="Co-guide Name"
-                />
-              </td>
-              <th className="p-2 border border-gray-300 bg-gray-100">Employee Codes</th>
-              <td className="p-2 border border-gray-300">
-                {!viewOnly ? (
-                <input
-                  type="text"
-                  name="employeeCodes"
-                  value={formData.employeeCodes || ''}
-                  onChange={handleChange}
-                  className="w-full p-1 border border-gray-300 rounded"
-                  placeholder="e.g., 35363, 12345"
-                />
-              ) : (
-                <p className="text-gray-700">
-                  {/* THIS IS THE CRITICAL LINE THAT NEEDS THE TYPE CHECK */}
-                  {typeof formData.employeeCodes === 'string' && formData.employeeCodes.trim() !== ''
-                    ? formData.employeeCodes // Display the string value
-                    : 'N/A'}
-                </p>
-              )}
-              </td>
-            </tr>
-            <tr>
-              <th className="p-2 border border-gray-300 bg-gray-100">Name of the student</th>
+              <th className="p-2 border border-gray-300 bg-gray-100">Name of the Student</th>
               <td className="p-2 border border-gray-300">
                 <input
                   type="text"
@@ -728,10 +699,9 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
                   value={formData.studentName}
                   onChange={handleChange}
                   disabled={viewOnly}
-                  className="w-full p-1 border border-gray-300 rounded disabled:bg-gray-100"
-                  placeholder="Student Name"
-                  required
+                  className={`w-full p-1 border rounded ${errors.studentName ? 'border-red-500' : 'border-gray-300'}`}
                 />
+                {errors.studentName && <p className="text-red-500 text-xs mt-1">{errors.studentName}</p>}
               </td>
               <th className="p-2 border border-gray-300 bg-gray-100">Year of Admission</th>
               <td className="p-2 border border-gray-300">
@@ -741,8 +711,9 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
                   value={formData.yearOfAdmission}
                   onChange={handleChange}
                   disabled={viewOnly}
-                  className="w-full p-1 border border-gray-300 rounded disabled:bg-gray-100"
+                  className={`w-full p-1 border rounded ${errors.yearOfAdmission ? 'border-red-500' : 'border-gray-300'}`}
                 />
+                {errors.yearOfAdmission && <p className="text-red-500 text-xs mt-1">{errors.yearOfAdmission}</p>}
               </td>
             </tr>
             <tr>
@@ -754,8 +725,9 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
                   value={formData.branch}
                   onChange={handleChange}
                   disabled={viewOnly}
-                  className="w-full p-1 border border-gray-300 rounded disabled:bg-gray-100"
+                  className={`w-full p-1 border rounded ${errors.branch ? 'border-red-500' : 'border-gray-300'}`}
                 />
+                {errors.branch && <p className="text-red-500 text-xs mt-1">{errors.branch}</p>}
               </td>
               <th className="p-2 border border-gray-300 bg-gray-100">Roll No.</th>
               <td className="p-2 border border-gray-300">
@@ -765,9 +737,9 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
                   value={formData.rollNo}
                   onChange={handleChange}
                   disabled={viewOnly}
-                  className="w-full p-1 border border-gray-300 rounded disabled:bg-gray-100"
-                  required
+                  className={`w-full p-1 border rounded ${errors.rollNo ? 'border-red-500' : 'border-gray-300'}`}
                 />
+                {errors.rollNo && <p className="text-red-500 text-xs mt-1">{errors.rollNo}</p>}
               </td>
             </tr>
             <tr>
@@ -779,17 +751,18 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
                   value={formData.mobileNo}
                   onChange={handleChange}
                   disabled={viewOnly}
-                  className="w-full p-1 border border-gray-300 rounded disabled:bg-gray-100"
+                  className={`w-full p-1 border rounded ${errors.mobileNo ? 'border-red-500' : 'border-gray-300'}`}
                 />
+                {errors.mobileNo && <p className="text-red-500 text-xs mt-1">{errors.mobileNo}</p>}
               </td>
-              <th className="p-2 border border-gray-300 bg-gray-100">Whether Paid fees for Current Academic Year</th>
+              <th className="p-2 border border-gray-300 bg-gray-100">Fees Paid for Current A.Y.</th>
               <td className="p-2 border border-gray-300">
                 <select
                   name="feesPaid"
                   value={formData.feesPaid}
                   onChange={handleChange}
                   disabled={viewOnly}
-                  className="w-full p-1 border border-gray-300 rounded disabled:bg-gray-100"
+                  className="w-full p-1 border border-gray-300 rounded"
                 >
                   <option value="Yes">Yes</option>
                   <option value="No">No</option>
@@ -797,160 +770,207 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
               </td>
             </tr>
             <tr>
-              <th className="p-2 border border-gray-300 bg-gray-100">Whether received finance from any other agency</th>
+              <th className="p-2 border border-gray-300 bg-gray-100">Received Financial Assistance in Current A.Y.</th>
               <td className="p-2 border border-gray-300">
                 <select
                   name="receivedFinance"
                   value={formData.receivedFinance}
                   onChange={handleChange}
                   disabled={viewOnly}
-                  className="w-full p-1 border border-gray-300 rounded disabled:bg-gray-100"
+                  className="w-full p-1 border border-gray-300 rounded"
                 >
                   <option value="Yes">Yes</option>
                   <option value="No">No</option>
                 </select>
               </td>
-              <td colSpan="2" className="p-2 border border-gray-300">
-                {formData.receivedFinance === 'Yes' && (
-                  <input
-                    type="text"
-                    name="financeDetails"
-                    value={formData.financeDetails}
-                    onChange={handleChange}
-                    disabled={viewOnly}
-                    className="w-full p-1 border border-gray-300 rounded disabled:bg-gray-100"
-                    placeholder="Provide details"
-                  />
-                )}
+              <th className="p-2 border border-gray-300 bg-gray-100">Details of Financial Assistance</th>
+              <td className="p-2 border border-gray-300">
+                <input
+                  type="text"
+                  name="financeDetails"
+                  value={formData.financeDetails}
+                  onChange={handleChange}
+                  disabled={viewOnly}
+                  className={`w-full p-1 border rounded ${errors.financeDetails ? 'border-red-500' : 'border-gray-300'}`}
+                />
+                {errors.financeDetails && <p className="text-red-500 text-xs mt-1">{errors.financeDetails}</p>}
               </td>
             </tr>
           </tbody>
         </table>
 
-        {/* Journal/Paper/Poster Section */}
-        <div className="mb-6 p-4 border border-gray-300 rounded">
-          <h3 className="font-semibold mb-4 text-lg">For Journal/Paper/Poster Presentation</h3>
-          
-          <div className="mb-4">
-            <label className="block font-semibold mb-1">Title of Paper</label>
-            <input
-              type="text"
-              name="paperTitle"
-              value={formData.paperTitle}
-              onChange={handleChange}
-              disabled={viewOnly}
-              className="w-full p-1 border border-gray-300 rounded disabled:bg-gray-100"
-            />
-          </div>
-          
-          <div className="mb-4">
-            <label className="block font-semibold mb-1">If paper is available online, then state link</label>
-            <input
-              type="url"
-              name="paperLink"
-              value={formData.paperLink}
-              onChange={handleChange}
-              disabled={viewOnly}
-              className="w-full p-1 border border-gray-300 rounded disabled:bg-gray-100"
-            />
-          </div>
-          
-          <div className="mb-4">
-            <label className="block font-semibold mb-1">Names of Authors</label>
-            <div className="grid grid-cols-2 gap-4">
-              {formData.authors.map((author, index) => (
-                <div key={index}>
-                  <input
-                    type="text"
-                    value={author}
-                    onChange={(e) => handleAuthorChange(index, e.target.value)}
-                    disabled={viewOnly}
-                    className="w-full p-1 border border-gray-300 rounded disabled:bg-gray-100"
-                    placeholder={`Author ${index + 1}`}
-                  />
+        {/* Paper / STTP Details */}
+        <table className="w-full mb-6 border border-gray-300">
+          <tbody>
+            <tr>
+              <th className="p-2 border border-gray-300 bg-gray-100">Title of Paper / STTP / Workshop / Course</th>
+              <td colSpan="3" className="p-2 border border-gray-300">
+                <input
+                  type="text"
+                  name="paperTitle"
+                  value={formData.paperTitle}
+                  onChange={handleChange}
+                  disabled={viewOnly}
+                  className={`w-full p-1 border rounded ${errors.paperTitle ? 'border-red-500' : 'border-gray-300'}`}
+                />
+                {errors.paperTitle && <p className="text-red-500 text-xs mt-1">{errors.paperTitle}</p>}
+              </td>
+            </tr>
+            <tr>
+              <th className="p-2 border border-gray-300 bg-gray-100">Link of Paper (if available online)</th>
+              <td colSpan="3" className="p-2 border border-gray-300">
+                <input
+                  type="text"
+                  name="paperLink"
+                  value={formData.paperLink}
+                  onChange={handleChange}
+                  disabled={viewOnly}
+                  className={`w-full p-1 border rounded ${errors.paperLink ? 'border-red-500' : 'border-gray-300'}`}
+                />
+                {errors.paperLink && <p className="text-red-500 text-xs mt-1">{errors.paperLink}</p>}
+              </td>
+            </tr>
+            <tr>
+              <th className="p-2 border border-gray-300 bg-gray-100">Authors</th>
+              <td colSpan="3" className="p-2 border border-gray-300">
+                <div className="grid grid-cols-2 gap-2">
+                  {formData.authors.map((author, index) => (
+                    <input
+                      key={index}
+                      type="text"
+                      value={author}
+                      onChange={(e) => handleAuthorChange(index, e.target.value)}
+                      disabled={viewOnly}
+                      className="w-full p-1 border border-gray-300 rounded"
+                      placeholder={`Author ${index + 1}`}
+                    />
+                  ))}
                 </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* STTP/Workshop Section */}
-        <div className="mb-6 p-4 border border-gray-300 rounded">
-          <h3 className="font-semibold mb-4 text-lg">For attending STTP/Workshops</h3>
-          
-          <div className="mb-4">
-            <label className="block font-semibold mb-1">Title of the STTP/Workshop</label>
-            <input
-              type="text"
-              name="sttpTitle"
-              value={formData.sttpTitle}
-              onChange={handleChange}
-              disabled={viewOnly}
-              className="w-full p-1 border border-gray-300 rounded disabled:bg-gray-100"
-            />
-          </div>
-          
-          <div className="mb-4">
-            <label className="block font-semibold mb-1">Name and address of organizers (give website also)</label>
-            <input
-              type="text"
-              name="organizers"
-              value={formData.organizers}
-              onChange={handleChange}
-              disabled={viewOnly}
-              className="w-full p-1 border border-gray-300 rounded disabled:bg-gray-100"
-            />
-          </div>
-          
-          <div className="mb-4">
-            <label className="block font-semibold mb-1">Brief reason for attending the Workshop/STTP</label>
-            <textarea
-              name="reasonForAttending"
-              value={formData.reasonForAttending}
-              onChange={handleChange}
-              disabled={viewOnly}
-              className="w-full p-1 border border-gray-300 rounded h-20 disabled:bg-gray-100"
-            />
-          </div>
-          
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label className="block font-semibold mb-1">Number of days of Workshop/STTP</label>
-              <input
-                type="number"
-                name="numberOfDays"
-                value={formData.numberOfDays}
-                onChange={handleChange}
-                disabled={viewOnly}
-                className="w-full p-1 border border-gray-300 rounded disabled:bg-gray-100"
-              />
-            </div>
-            <div>
-              <label className="block font-semibold mb-1">From Date</label>
-              <input
-                type="date"
-                name="dateFrom"
-                value={formData.dateFrom}
-                onChange={handleChange}
-                disabled={viewOnly}
-                className="w-full p-1 border border-gray-300 rounded disabled:bg-gray-100"
-              />
-            </div>
-            <div>
-              <label className="block font-semibold mb-1">To Date</label>
-              <input
-                type="date"
-                name="dateTo"
-                value={formData.dateTo}
-                onChange={handleChange}
-                disabled={viewOnly}
-                className="w-full p-1 border border-gray-300 rounded disabled:bg-gray-100"
-              />
-            </div>
-          </div>
-        </div>
-
-        <p className="text-sm italic mb-6 text-gray-600">*Attach a copy of paper published / presented / proof of participation/registration fee receipt</p>
+                {errors.authors && <p className="text-red-500 text-xs mt-1">{errors.authors}</p>}
+              </td>
+            </tr>
+            <tr>
+              <th className="p-2 border border-gray-300 bg-gray-100">Name of Guide</th>
+              <td className="p-2 border border-gray-300">
+                <input
+                  type="text"
+                  name="guideName"
+                  value={formData.guideName}
+                  onChange={handleChange}
+                  disabled={viewOnly}
+                  className={`w-full p-1 border rounded ${errors.guideName ? 'border-red-500' : 'border-gray-300'}`}
+                />
+                {errors.guideName && <p className="text-red-500 text-xs mt-1">{errors.guideName}</p>}
+              </td>
+              <th className="p-2 border border-gray-300 bg-gray-100">Co-Guide Name</th>
+              <td className="p-2 border border-gray-300">
+                <input
+                  type="text"
+                  name="coGuideName"
+                  value={formData.coGuideName}
+                  onChange={handleChange}
+                  disabled={viewOnly}
+                  className="w-full p-1 border border-gray-300 rounded"
+                />
+              </td>
+            </tr>
+            <tr>
+              <th className="p-2 border border-gray-300 bg-gray-100">Employee Codes (comma-separated)</th>
+              <td colSpan="3" className="p-2 border border-gray-300">
+                <input
+                  type="text"
+                  name="employeeCodes"
+                  value={formData.employeeCodes.join(', ')}
+                  onChange={handleEmployeeCodeChange}
+                  disabled={viewOnly}
+                  className={`w-full p-1 border rounded ${errors.employeeCodes ? 'border-red-500' : 'border-gray-300'}`}
+                  placeholder="e.g., EMP001, EMP002"
+                />
+                {errors.employeeCodes && <p className="text-red-500 text-xs mt-1">{errors.employeeCodes}</p>}
+              </td>
+            </tr>
+            <tr>
+              <th className="p-2 border border-gray-300 bg-gray-100">Organizers</th>
+              <td className="p-2 border border-gray-300">
+                <input
+                  type="text"
+                  name="organizers"
+                  value={formData.organizers}
+                  onChange={handleChange}
+                  disabled={viewOnly}
+                  className={`w-full p-1 border rounded ${errors.organizers ? 'border-red-500' : 'border-gray-300'}`}
+                />
+                {errors.organizers && <p className="text-red-500 text-xs mt-1">{errors.organizers}</p>}
+              </td>
+            </tr>
+            <tr>
+              <th className="p-2 border border-gray-300 bg-gray-100">Reason for Attending</th>
+              <td className="p-2 border border-gray-300">
+                <input
+                  type="text"
+                  name="reasonForAttending"
+                  value={formData.reasonForAttending}
+                  onChange={handleChange}
+                  disabled={viewOnly}
+                  className={`w-full p-1 border rounded ${errors.reasonForAttending ? 'border-red-500' : 'border-gray-300'}`}
+                />
+                {errors.reasonForAttending && <p className="text-red-500 text-xs mt-1">{errors.reasonForAttending}</p>}
+              </td>
+            </tr>
+            <tr>
+              <th className="p-2 border border-gray-300 bg-gray-100">Number of Days</th>
+              <td className="p-2 border border-gray-300">
+                <input
+                  type="number"
+                  name="numberOfDays"
+                  value={formData.numberOfDays}
+                  onChange={handleChange}
+                  disabled={viewOnly}
+                  className={`w-full p-1 border rounded ${errors.numberOfDays ? 'border-red-500' : 'border-gray-300'}`}
+                />
+                {errors.numberOfDays && <p className="text-red-500 text-xs mt-1">{errors.numberOfDays}</p>}
+              </td>
+              <th className="p-2 border border-gray-300 bg-gray-100">Date From</th>
+              <td className="p-2 border border-gray-300">
+                <input
+                  type="date"
+                  name="dateFrom"
+                  value={formData.dateFrom}
+                  onChange={handleChange}
+                  disabled={viewOnly}
+                  className={`w-full p-1 border rounded ${errors.dateFrom ? 'border-red-500' : 'border-gray-300'}`}
+                />
+                {errors.dateFrom && <p className="text-red-500 text-xs mt-1">{errors.dateFrom}</p>}
+              </td>
+            </tr>
+            <tr>
+              <th className="p-2 border border-gray-300 bg-gray-100">Date To</th>
+              <td className="p-2 border border-gray-300">
+                <input
+                  type="date"
+                  name="dateTo"
+                  value={formData.dateTo}
+                  onChange={handleChange}
+                  disabled={viewOnly}
+                  className={`w-full p-1 border rounded ${errors.dateTo ? 'border-red-500' : 'border-gray-300'}`}
+                />
+                {errors.dateTo && <p className="text-red-500 text-xs mt-1">{errors.dateTo}</p>}
+              </td>
+              <th className="p-2 border border-gray-300 bg-gray-100">Registration Fee</th>
+              <td className="p-2 border border-gray-300">
+                <input
+                  type="text"
+                  name="registrationFee"
+                  value={formData.registrationFee}
+                  onChange={handleChange}
+                  disabled={viewOnly}
+                  className={`w-full p-1 border rounded ${errors.registrationFee ? 'border-red-500' : 'border-gray-300'}`}
+                />
+                {errors.registrationFee && <p className="text-red-500 text-xs mt-1">{errors.registrationFee}</p>}
+              </td>
+            </tr>
+          </tbody>
+        </table>
 
         {/* Bank Details */}
         <table className="w-full mb-6 border border-gray-300">
@@ -959,21 +979,7 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
               <th className="p-2 border border-gray-300 bg-gray-100" colSpan="2">Bank details for RTGS/NEFT</th>
             </tr>
             <tr>
-              <th className="p-2 border border-gray-300 bg-gray-100">Registration fee paid: Rs.</th>
-              <td className="p-2 border border-gray-300">
-                <input
-                  type="text"
-                  name="registrationFee"
-                  value={formData.registrationFee}
-                  onChange={handleChange}
-                  disabled={viewOnly}
-                  className="w-full p-1 border border-gray-300 rounded disabled:bg-gray-100"
-                  placeholder="Rs.___________"
-                />
-              </td>
-            </tr>
-            <tr>
-              <th className="p-2 border border-gray-300 bg-gray-100">Beneficiary name, brief address and mobile no.</th>
+              <th className="p-2 border border-gray-300 bg-gray-100">Beneficiary Name</th>
               <td className="p-2 border border-gray-300">
                 <input
                   type="text"
@@ -981,8 +987,9 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
                   value={formData.bankDetails.beneficiary}
                   onChange={handleBankChange}
                   disabled={viewOnly}
-                  className="w-full p-1 border border-gray-300 rounded disabled:bg-gray-100"
+                  className={`w-full p-1 border rounded ${errors.beneficiary ? 'border-red-500' : 'border-gray-300'}`}
                 />
+                {errors.beneficiary && <p className="text-red-500 text-xs mt-1">{errors.beneficiary}</p>}
               </td>
             </tr>
             <tr>
@@ -994,12 +1001,13 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
                   value={formData.bankDetails.ifsc}
                   onChange={handleBankChange}
                   disabled={viewOnly}
-                  className="w-full p-1 border border-gray-300 rounded disabled:bg-gray-100"
+                  className={`w-full p-1 border rounded ${errors.ifsc ? 'border-red-500' : 'border-gray-300'}`}
                 />
+                {errors.ifsc && <p className="text-red-500 text-xs mt-1">{errors.ifsc}</p>}
               </td>
             </tr>
             <tr>
-              <th className="p-2 border border-gray-300 bg-gray-100">Name of the bank</th>
+              <th className="p-2 border border-gray-300 bg-gray-100">Bank Name</th>
               <td className="p-2 border border-gray-300">
                 <input
                   type="text"
@@ -1007,8 +1015,9 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
                   value={formData.bankDetails.bankName}
                   onChange={handleBankChange}
                   disabled={viewOnly}
-                  className="w-full p-1 border border-gray-300 rounded disabled:bg-gray-100"
+                  className={`w-full p-1 border rounded ${errors.bankName ? 'border-red-500' : 'border-gray-300'}`}
                 />
+                {errors.bankName && <p className="text-red-500 text-xs mt-1">{errors.bankName}</p>}
               </td>
             </tr>
             <tr>
@@ -1020,12 +1029,13 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
                   value={formData.bankDetails.branch}
                   onChange={handleBankChange}
                   disabled={viewOnly}
-                  className="w-full p-1 border border-gray-300 rounded disabled:bg-gray-100"
+                  className={`w-full p-1 border rounded ${errors.branch ? 'border-red-500' : 'border-gray-300'}`}
                 />
+                {errors.branch && <p className="text-red-500 text-xs mt-1">{errors.branch}</p>}
               </td>
             </tr>
             <tr>
-              <th className="p-2 border border-gray-300 bg-gray-100">Account type</th>
+              <th className="p-2 border border-gray-300 bg-gray-100">Account Type</th>
               <td className="p-2 border border-gray-300">
                 <input
                   type="text"
@@ -1033,12 +1043,13 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
                   value={formData.bankDetails.accountType}
                   onChange={handleBankChange}
                   disabled={viewOnly}
-                  className="w-full p-1 border border-gray-300 rounded disabled:bg-gray-100"
+                  className={`w-full p-1 border rounded ${errors.accountType ? 'border-red-500' : 'border-gray-300'}`}
                 />
+                {errors.accountType && <p className="text-red-500 text-xs mt-1">{errors.accountType}</p>}
               </td>
             </tr>
             <tr>
-              <th className="p-2 border border-gray-300 bg-gray-100">Account number</th>
+              <th className="p-2 border border-gray-300 bg-gray-100">Account Number</th>
               <td className="p-2 border border-gray-300">
                 <input
                   type="text"
@@ -1046,153 +1057,19 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
                   value={formData.bankDetails.accountNumber}
                   onChange={handleBankChange}
                   disabled={viewOnly}
-                  className="w-full p-1 border border-gray-300 rounded disabled:bg-gray-100"
+                  className={`w-full p-1 border rounded ${errors.accountNumber ? 'border-red-500' : 'border-gray-300'}`}
                 />
+                {errors.accountNumber && <p className="text-red-500 text-xs mt-1">{errors.accountNumber}</p>}
               </td>
             </tr>
           </tbody>
         </table>
 
-        {/* File Uploads */}
-        <div className="mb-6 space-y-4">
-          {/* Multiple PDFs (max 5) */}
-          <div>
-            <label className="block font-semibold mb-2">Attach up to 5 proof documents (PDF):</label>
-            {viewOnly ? (
-              Array.isArray(files.pdfs) && files.pdfs.length > 0 ? (
-                files.pdfs.map((file, idx) => (
-                  <div key={idx}>
-                    {renderFileDisplay(`pdfs[${idx}]`, `Proof Document ${idx + 1}`)}
-                  </div>
-                ))
-              ) : (
-                <p className="text-gray-500">No proof documents uploaded.</p>
-              )
-            ) : (
-              <>
-                <input
-                  type="file"
-                  accept="application/pdf"
-                  multiple
-                  onChange={(e) => {
-                    const selectedFiles = Array.from(e.target.files).slice(0, 5); // limit to 5 PDFs
-                    setFiles(prev => ({ ...prev, pdfs: selectedFiles }));
-                  }}
-                />
-                {Array.isArray(files.pdfs) && files.pdfs.length > 0 && (
-                  <ul className="text-sm mt-1 list-disc pl-5">
-                    {files.pdfs.map((file, idx) => (
-                      <li key={idx}>{file.name}</li>
-                    ))}
-                  </ul>
-                )}
-              </>
-            )}
-          </div>
-
-          {/* ZIP file */}
-          <div>
-            <label className="block font-semibold mb-2">Attach ZIP file (optional):</label>
-            {viewOnly ? (
-              renderFileDisplay('zip', 'ZIP File')
-            ) : (
-              <>
-                <input
-                  type="file"
-                  accept=".zip,application/zip,application/x-zip-compressed"
-                  onChange={(e) => {
-                    const selectedFile = e.target.files[0];
-                    if (selectedFile) {
-                      setFiles(prev => ({ ...prev, zip: selectedFile }));
-                    }
-                  }}
-                />
-                {files.zip && <p className="text-sm mt-1">{files.zip.name}</p>}
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Signatures */}
-        <div className="mb-6">
-          <div className="mb-4">
-            <label className="block font-semibold mb-2">Date of Submission:</label>
-            <input
-              type="date"
-              name="dateOfSubmission"
-              value={formData.dateOfSubmission}
-              onChange={handleChange}
-              disabled={viewOnly}
-              className="w-full p-1 border border-gray-300 rounded max-w-xs disabled:bg-gray-100"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            {/* Student Signature */}
-            <div>
-              <label className="block font-semibold mb-2">Signature of the student</label>
-              {!viewOnly && (
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => handleFileChange('studentSignature', e)}
-                />
-              )}
-              {files.studentSignature && !viewOnly && <p className="text-sm mt-1">{files.studentSignature.name}</p>}
-            </div>
-
-            {/* Guide Signature */}
-            <div>
-              <label className="block font-semibold mb-2">Signature of Guide / Co-guide</label>
-              {!viewOnly && (
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => handleFileChange('guideSignature', e)}
-                />
-              )}
-              {files.guideSignature && !viewOnly && <p className="text-sm mt-1">{files.guideSignature.name}</p>}
-            </div>
-          </div>
-
-          {/* HOD Signature */}
-          <div className="mb-4">
-            <label className="block font-semibold mb-2">Remarks by HOD:</label>
-              {!viewOnly ? (
-                <textarea
-                  name="remarksByHod"
-                  value={formData.remarksByHod || ''} // Ensure value is a string, default to empty string
-                  onChange={handleChange}
-                  className="w-full p-2 border border-gray-300 rounded h-20"
-                  placeholder="Enter remarks here..."
-                ></textarea>
-              ) : (
-                <p className="w-full p-2 border border-gray-300 rounded h-20 bg-gray-100 whitespace-pre-wrap">
-                  {formData.remarksByHod && formData.remarksByHod.trim() !== ''
-                    ? formData.remarksByHod
-                    : 'No remarks provided.'}
-                </p>
-              )}
-          </div>
-
-          <div className="mb-4">
-            <label className="block font-semibold mb-2">Signature of HOD</label>
-            {!viewOnly && (
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => handleFileChange('hodSignature', e)}
-              />
-            )}
-            {files.hodSignature && !viewOnly && <p className="text-sm mt-1">{files.hodSignature.name}</p>}
-          </div>
-        </div>
-
-        {/* Approval Section */}
+        {/* Amount Details */}
         <table className="w-full mb-6 border border-gray-300">
           <tbody>
             <tr>
-              <th className="p-2 border border-gray-300 bg-gray-100">Amount claimed</th>
+              <th className="p-2 border border-gray-300 bg-gray-100">Amount Claimed</th>
               <td className="p-2 border border-gray-300">
                 <input
                   type="text"
@@ -1200,11 +1077,11 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
                   value={formData.amountClaimed}
                   onChange={handleChange}
                   disabled={viewOnly}
-                  className="w-full p-1 border border-gray-300 rounded disabled:bg-gray-100"
-                  placeholder="Rs.___________"
+                  className={`w-full p-1 border rounded ${errors.amountClaimed ? 'border-red-500' : 'border-gray-300'}`}
                 />
+                {errors.amountClaimed && <p className="text-red-500 text-xs mt-1">{errors.amountClaimed}</p>}
               </td>
-              <th className="p-2 border border-gray-300 bg-gray-100">Final Amount sanctioned</th>
+              <th className="p-2 border border-gray-300 bg-gray-100">Final Amount Sanctioned</th>
               <td className="p-2 border border-gray-300">
                 <input
                   type="text"
@@ -1212,67 +1089,154 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
                   value={formData.finalAmountSanctioned}
                   onChange={handleChange}
                   disabled={viewOnly}
-                  className="w-full p-1 border border-gray-300 rounded disabled:bg-gray-100"
-                  placeholder="Rs.___________"
+                  className={`w-full p-1 border rounded ${errors.finalAmountSanctioned ? 'border-red-500' : 'border-gray-300'}`}
                 />
+                {errors.finalAmountSanctioned && <p className="text-red-500 text-xs mt-1">{errors.finalAmountSanctioned}</p>}
               </td>
             </tr>
             <tr>
-              <th className="p-2 border border-gray-300 bg-gray-100">Signature of chairperson of SDC with date:</th>
-              <td colSpan="3" className="p-2 border border-gray-300">
-                <div className="flex items-center">
-                  {!viewOnly ? (
-                    <>
-                      <label className="bg-blue-500 text-white px-4 py-2 rounded cursor-pointer hover:bg-blue-600">
-                        Upload Signature
-                        <input
-                          type="file"
-                          className="hidden"
-                          accept="image/*"
-                          onChange={(e) => handleFileChange('sdcChairpersonSignature', e)}
-                        />
-                      </label>
-                      <span className="ml-2 text-sm">
-                        {files.sdcChairpersonSignature
-                          ? files.sdcChairpersonSignature.name || 'File selected'
-                          : 'No file chosen'}
-                      </span>
-                      <input
-                        type="date"
-                        name="sdcChairpersonDate"
-                        value={formData.sdcChairpersonDate}
-                        onChange={handleChange}
-                        disabled={viewOnly}
-                        className="ml-2 p-1 border border-gray-300 rounded"
-                      />
-                    </>
-                  ) : (
-                    <>
-                      {renderFileDisplay('sdcChairpersonSignature', 'SDC Chairperson Signature')}
-                      {formData?.sdcChairpersonDate && (
-                        <span className="ml-2 text-sm text-gray-600">({formData.sdcChairpersonDate})</span>
-                      )}
-                    </>
-                  )}
-                </div>
+              <th className="p-2 border border-gray-300 bg-gray-100">Date of Submission</th>
+              <td className="p-2 border border-gray-300">
+                <input
+                  type="date"
+                  name="dateOfSubmission"
+                  value={formData.dateOfSubmission}
+                  onChange={handleChange}
+                  disabled={viewOnly}
+                  className={`w-full p-1 border rounded ${errors.dateOfSubmission ? 'border-red-500' : 'border-gray-300'}`}
+                />
+                {errors.dateOfSubmission && <p className="text-red-500 text-xs mt-1">{errors.dateOfSubmission}</p>}
+              </td>
+              <th className="p-2 border border-gray-300 bg-gray-100">Remarks by HOD</th>
+              <td className="p-2 border border-gray-300">
+                <textarea
+                  name="remarksByHod"
+                  value={formData.remarksByHod || ''} // Ensure value is a string, default to empty string
+                  onChange={handleChange}
+                  disabled={viewOnly}
+                  rows="3"
+                  className={`w-full p-2 border rounded ${errors.remarksByHod ? 'border-red-500' : 'border-gray-300'}`}
+                  placeholder="Enter remarks here..."
+                ></textarea>
+                {errors.remarksByHod && <p className="text-red-500 text-xs mt-1">{errors.remarksByHod}</p>}
               </td>
             </tr>
           </tbody>
         </table>
 
+        {/* Signatures and Documents */}
+        {(!viewOnly || !isStudent) && ( // Show this section if not viewOnly OR if viewOnly but not a student
+          <table className="w-full mb-6 border border-gray-300">
+            <tbody>
+              <tr>
+                <th className="p-2 border border-gray-300 bg-gray-100">Student Signature</th>
+                <td className="p-2 border border-gray-300">
+                  {renderFileDisplay('studentSignature', 'Student Signature')}
+                  {errors.studentSignature && <p className="text-red-500 text-xs mt-1">{errors.studentSignature}</p>}
+                  {!viewOnly && files.studentSignature && (
+                    <button type="button" onClick={() => handleRemoveFile('studentSignature')} className="text-red-600 hover:underline text-xs mt-1">Remove</button>
+                  )}
+                </td>
+              </tr>
+              <tr>
+                <th className="p-2 border border-gray-300 bg-gray-100">Guide Signature</th>
+                <td className="p-2 border border-gray-300">
+                  {renderFileDisplay('guideSignature', 'Guide Signature')}
+                  {errors.guideSignature && <p className="text-red-500 text-xs mt-1">{errors.guideSignature}</p>}
+                  {!viewOnly && files.guideSignature && (
+                    <button type="button" onClick={() => handleRemoveFile('guideSignature')} className="text-red-600 hover:underline text-xs mt-1">Remove</button>
+                  )}
+                </td>
+              </tr>
+              <tr>
+                <th className="p-2 border border-gray-300 bg-gray-100">HOD Signature</th>
+                <td className="p-2 border border-gray-300">
+                  {renderFileDisplay('hodSignature', 'HOD Signature')}
+                  {errors.hodSignature && <p className="text-red-500 text-xs mt-1">{errors.hodSignature}</p>}
+                  {!viewOnly && files.hodSignature && (
+                    <button type="button" onClick={() => handleRemoveFile('hodSignature')} className="text-red-600 hover:underline text-xs mt-1">Remove</button>
+                  )}
+                </td>
+              </tr>
+              <tr>
+                <th className="p-2 border border-gray-300 bg-gray-100">Signature of chairperson of SDC with date:</th>
+                <td colSpan="3" className="p-2 border border-gray-300">
+                  <div className="flex items-center flex-wrap"> {/* Added flex-wrap for responsiveness */}
+                    {/* Render file display for SDC Chairperson Signature */}
+                    {renderFileDisplay('sdcChairpersonSignature', 'SDC Chairperson Signature')}
+                    {errors.sdcChairpersonSignature && <p className="text-red-500 text-xs mt-1">{errors.sdcChairpersonSignature}</p>}
+                    {/* Only show remove button if not in viewOnly mode and file exists */}
+                    {!viewOnly && files.sdcChairpersonSignature && (
+                      <button type="button" onClick={() => handleRemoveFile('sdcChairpersonSignature')} className="text-red-600 hover:underline text-xs ml-2 mt-1">Remove</button>
+                    )}
+                    {/* Date input for SDC Chairperson */}
+                    <input
+                      type="date"
+                      name="sdcChairpersonDate"
+                      value={formData.sdcChairpersonDate}
+                      onChange={handleChange}
+                      disabled={viewOnly}
+                      className="ml-2 p-1 border border-gray-300 rounded max-w-[150px]" // Added max-width
+                    />
+                    {viewOnly && formData?.sdcChairpersonDate && (
+                      <span className="ml-2 text-sm text-gray-600">({formData.sdcChairpersonDate})</span>
+                    )}
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <th className="p-2 border border-gray-300 bg-gray-100">Proof Document (PDF)</th>
+                <td className="p-2 border border-gray-300">
+                  {renderFileDisplay('proofDocument', 'Proof Document')}
+                  {errors.proofDocument && <p className="text-red-500 text-xs mt-1">{errors.proofDocument}</p>}
+                  {!viewOnly && files.proofDocument && (
+                    <button type="button" onClick={() => handleRemoveFile('proofDocument')} className="text-red-600 hover:underline text-xs mt-1">Remove</button>
+                  )}
+                </td>
+              </tr>
+              <tr>
+                <th className="p-2 border border-gray-300 bg-gray-100">Additional PDFs (Max 5)</th>
+                <td className="p-2 border border-gray-300">
+                  {renderFileDisplay('pdfs', 'Additional PDFs')}
+                  {errors.pdfs && <p className="text-red-500 text-xs mt-1">{errors.pdfs}</p>}
+                  {!viewOnly && files.pdfs.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      {files.pdfs.map((pdf, index) => (
+                        <div key={index} className="flex items-center justify-between bg-gray-100 px-2 py-1 rounded">
+                          <span>{pdf.name}</span>
+                          <button type="button" onClick={() => handleRemoveFile('pdfs', index)} className="text-red-600 hover:underline text-xs ml-2">Remove</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </td>
+              </tr>
+              <tr>
+                <th className="p-2 border border-gray-300 bg-gray-100">ZIP File (Optional)</th>
+                <td className="p-2 border border-gray-300">
+                  {renderFileDisplay('zipFile', 'ZIP File')}
+                  {errors.zipFile && <p className="text-red-500 text-xs mt-1">{errors.zipFile}</p>}
+                  {!viewOnly && files.zipFile && (
+                    <button type="button" onClick={() => handleRemoveFile('zipFile')} className="text-red-600 hover:underline text-xs mt-1">Remove</button>
+                  )}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        )}
+
         {/* Form Actions */}
         <div className="flex justify-end space-x-4 mt-8">
           <button
             type="button"
-            onClick={() => window.history.back()} 
+            onClick={() => window.history.back()}
             className="back-btn bg-red-500 text-white px-6 py-2 rounded hover:bg-red-600"
           >
             Back
           </button>
-          {!viewOnly && (
+          {!viewOnly && isStudent && ( // Only show submit button if not viewOnly AND is a student
             <button
               type="submit"
-              onClick={handleSubmit}
               disabled={isSubmitting}
               className={`submit-btn bg-green-500 text-white px-6 py-2 rounded hover:bg-green-600 ${isSubmitting ? 'bg-blue-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2'}`}
             >
@@ -1280,8 +1244,9 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
             </button>
           )}
         </div>
-      </div>
+      </form>
     </div>
   );
 };
+
 export default R1;

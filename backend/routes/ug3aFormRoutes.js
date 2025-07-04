@@ -1,3 +1,4 @@
+// ug3aFormRoutes.js
 import express from 'express';
 import multer from 'multer';
 import mongoose from 'mongoose';
@@ -8,202 +9,217 @@ import dotenv from 'dotenv';
 dotenv.config();
 const router = express.Router();
 
+// Initialize GridFSBucket globally for this file for consistency (for uploads/rollbacks)
+let gfsBucket;
+const conn = mongoose.connection;
+conn.once('open', () => {
+    gfsBucket = new GridFSBucket(conn.db, { bucketName: 'uploads' }); // Assuming UG3A files go to 'uploads' bucket
+    console.log("✅ GridFSBucket for UG3A forms initialized (using 'uploads' bucket)");
+});
+
+
 // Configure multer for memory storage
 const storage = multer.memoryStorage();
 const upload = multer({
     storage: storage,
     limits: { fileSize: 10 * 1024 * 1024 }, // 10MB individual file size limit
     fileFilter: (req, file, cb) => {
-        if (file.fieldname === 'uploadedImage') {
+        // console.log('Multer: Filtering file:', file.originalname, 'Mimetype:', file.mimetype);
+        // Ensure you have valid types for all expected files
+        // Match the field names as sent by the frontend: 'uploadedImage', 'uploadedPdfs', 'uploadedZipFile'
+        if (file.fieldname === 'uploadedImage') { // Matches frontend 'uploadedImage'
             if (file.mimetype === 'image/jpeg' || file.mimetype === 'image/png') {
                 cb(null, true);
             } else {
                 console.error('Multer: Invalid image type for uploadedImage:', file.mimetype);
                 cb(new Error('Invalid image type. Only JPEG/PNG allowed for uploadedImage.'));
             }
-        } else if (file.fieldname === 'uploadedZipFile') {
+        } else if (file.fieldname === 'uploadedZipFile') { // Matches frontend 'uploadedZipFile'
             if (file.mimetype === 'application/zip' || file.mimetype === 'application/x-zip-compressed') {
                 cb(null, true);
             } else {
-                console.error('Multer: Invalid file type for uploadedZipFile:', file.mimetype);
-                cb(new Error('Invalid file type. Only ZIP files allowed for uploadedZipFile.'));
+                console.error('Multer: Invalid zip type for uploadedZipFile:', file.mimetype);
+                cb(new Error('Invalid file type. Only ZIP allowed for uploadedZipFile.'));
             }
-        } else if (file.fieldname === 'uploadedPdfs') {
-            if (file.mimetype === 'application/pdf') {
+        } else if (file.fieldname === 'uploadedPdfs') { // Matches frontend 'uploadedPdfs'
+             if (file.mimetype === 'application/pdf') {
                 cb(null, true);
             } else {
                 console.error('Multer: Invalid PDF type for uploadedPdfs:', file.mimetype);
-                cb(new Error('Invalid PDF type. Only PDF files allowed for uploadedPdfs.'));
+                cb(new Error('Invalid file type. Only PDF allowed for uploadedPdfs.'));
             }
-        } else {
-            cb(null, true); // Accept other files if any (consider if this is desired behavior)
+        }
+         else {
+            // Allow other fields without specific file type checks for now, or add specific checks
+            cb(null, true);
         }
     }
 });
 
-// Helper function to upload a file buffer to GridFS and return its metadata
-const uploadToGridFS = (bucket, file) => {
-    return new Promise((resolve, reject) => {
-        if (!file || !file.buffer) { // Ensure file and its buffer exist
-            resolve(null); // Resolve with null if no file or buffer
-            return;
-        }
-        const { buffer, originalname, mimetype, size } = file;
+const uploadFields = upload.fields([
+    { name: 'uploadedImage', maxCount: 1 },
+    { name: 'uploadedPdfs', maxCount: 5 },
+    { name: 'uploadedZipFile', maxCount: 1 },
+    // Add other file fields if any (e.g., signatures)
+]);
 
-        if (!bucket) {
-            return reject(new Error("GridFSBucket is not initialized."));
-        }
+// POST route to handle form submission and file uploads
+router.post('/submit', uploadFields, async (req, res) => {
+    const uploadedFileIds = []; // To track uploaded file IDs for rollback
 
-        const stream = bucket.openUploadStream(originalname, {
-            contentType: mimetype,
-            metadata: { originalname, mimetype, size }
-        });
-
-        stream.end(buffer);
-
-        stream.on("finish", () => {
-            console.log(`✅ GridFS Upload Success: ${originalname} (ID: ${stream.id})`); // Log inside GridFS helper
-            resolve({
-                filename: originalname,
-                fileId: stream.id,
-                mimetype: mimetype,
-                size: size
-            });
-        });
-
-        stream.on("error", (error) => {
-            console.error("GridFS upload error:", error);
-            reject(error);
-        });
-    });
-};
-
-// 🔹 Submit UG3A Form (Updated for GridFS and matching frontend field names)
-router.post("/submit", upload.fields([
-    { name: "uploadedImage", maxCount: 1 },
-    { name: "uploadedPdfs", maxCount: 5 },
-    { name: "uploadedZipFile", maxCount: 1 }
-]), async (req, res) => {
     try {
-        const { organizingInstitute, projectTitle, students, expenses, bankDetails, svvNetId } = req.body;
+        const {
+            svvNetId,
+            organizingInstitute,
+            projectTitle,
+            students,
+            expenses,
+            bankDetails,
+            totalAmount, // Assuming totalAmount is sent from frontend or calculated
+        } = req.body;
 
-        if (!svvNetId) {
-            return res.status(400).json({ message: "svvNetId is required for form submission." });
-        }
+        const files = req.files;
 
-        const parsedStudents = students ? JSON.parse(students) : [];
-        const parsedExpenses = expenses ? JSON.parse(expenses) : [];
-        const parsedBankDetails = bankDetails ? JSON.parse(bankDetails) : {};
-
-        const totalAmount = parsedExpenses.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
-
-        if (!mongoose.connection.readyState) {
-            console.error("MongoDB connection not established.");
-            return res.status(500).json({ error: "Database connection not ready." });
-        }
-        const db = mongoose.connection.db;
-        const bucket = new GridFSBucket(db, { bucketName: "uploads" });
-
-        // Initialize file detail variables
-        let uploadedImageDetails = null;
-        const uploadedPdfDetails = [];
-        let uploadedZipFileDetails = null;
-
-        // Process uploaded files BEFORE creating the newForm instance
-        if (req.files && req.files.uploadedImage && req.files.uploadedImage.length > 0) {
-            const imageFile = req.files.uploadedImage[0];
-            uploadedImageDetails = await uploadToGridFS(bucket, imageFile); // Pass bucket to helper
-            console.log(`✅ Image Uploaded and Linked:`, uploadedImageDetails.filename);
-        }
-
-        if (req.files && req.files.uploadedPdfs && req.files.uploadedPdfs.length > 0) {
-            for (const file of req.files.uploadedPdfs) {
-                const pdfData = await uploadToGridFS(bucket, file); // Pass bucket to helper
-                if (pdfData) {
-                    uploadedPdfDetails.push(pdfData);
+        // Helper function to upload a file to GridFS
+        const uploadFile = async (file) => {
+            if (!file) return null;
+            return new Promise((resolve, reject) => {
+                if (!gfsBucket) { // Use the globally initialized bucket
+                    return reject(new Error("GridFSBucket not initialized for uploads."));
                 }
-            }
-            console.log(`✅ PDFs Uploaded and Linked:`, uploadedPdfDetails.map(d => d.filename).join(', '));
+                const uploadStream = gfsBucket.openUploadStream(file.originalname, {
+                    contentType: file.mimetype,
+                });
+                const fileId = uploadStream.id;
+                uploadedFileIds.push(fileId); // Add the ObjectId directly to rollback list
+                uploadStream.end(file.buffer);
+                uploadStream.on('finish', () => resolve({
+                    fileId: fileId, // <--- CORRECTED LINE: Mapped 'id' from GridFS to 'fileId' for schema
+                    filename: file.originalname,
+                    originalname: file.originalname, // Store original name
+                    mimetype: file.mimetype,
+                    size: file.size,
+                }));
+                uploadStream.on('error', reject);
+            });
+        };
+
+        // Upload files
+        const uploadedImageData = files.uploadedImage ? await uploadFile(files.uploadedImage[0]) : null;
+        const uploadedPdfsData = files.uploadedPdfs ? await Promise.all(files.uploadedPdfs.map(uploadFile)) : [];
+        const uploadedZipFileData = files.uploadedZipFile ? await uploadFile(files.uploadedZipFile[0]) : null;
+
+        // Parse JSON strings from req.body
+        const parsedStudents = typeof students === 'string' ? JSON.parse(students) : students;
+        const parsedExpenses = typeof expenses === 'string' ? JSON.parse(expenses) : expenses;
+        const parsedBankDetails = typeof bankDetails === 'string' ? JSON.parse(bankDetails) : bankDetails;
+        
+        // Robust totalAmount parsing
+        let parsedTotalAmount = parseFloat(totalAmount);
+        if (isNaN(parsedTotalAmount)) {
+            parsedTotalAmount = 0; // Default to 0 if totalAmount from frontend is NaN or not provided
         }
 
-        if (req.files && req.files.uploadedZipFile && req.files.uploadedZipFile.length > 0) {
-            const zipFile = req.files.uploadedZipFile[0];
-            uploadedZipFileDetails = await uploadToGridFS(bucket, zipFile); // Pass bucket to helper
-            console.log(`✅ ZIP File Uploaded and Linked:`, uploadedZipFileDetails.filename);
-        }
-
-        // Now create the newForm instance with all processed file details
         const newForm = new UG3AForm({
-            svvNetId: svvNetId,
+            svvNetId: svvNetId ? String(svvNetId).trim() : '',
             organizingInstitute,
             projectTitle,
             students: parsedStudents,
+            totalAmount: parsedTotalAmount, // Use the parsed and validated totalAmount
             expenses: parsedExpenses,
-            totalAmount,
             bankDetails: parsedBankDetails,
-            uploadedImage: uploadedImageDetails,
-            uploadedPdfs: uploadedPdfDetails,
-            uploadedZipFile: uploadedZipFileDetails
+            uploadedImage: uploadedImageData,
+            uploadedPdfs: uploadedPdfsData,
+            uploadedZipFile: uploadedZipFileData,
+            status: 'pending', // Default status. Ensure your schema allows 'pending' (lowercase).
         });
 
         await newForm.save();
-        console.log("UG3A Form saved to DB:", newForm._id); // Log after saving the complete form
-        res.status(201).json({ message: "UG3A Form submitted successfully. Files stored in GridFS.", data: newForm });
+        uploadedFileIds.length = 0; // Clear rollback list upon successful save
+        res.status(201).json({ message: 'UG3A form submitted successfully!', id: newForm._id });
 
     } catch (error) {
-        console.error("UG3A Form Submission Error:", error);
-        if (error instanceof SyntaxError) {
-            return res.status(400).json({ error: "Invalid JSON data in form fields." });
+       console.error('UG3A form submission error:', error);
+        // Rollback: Delete uploaded files if an error occurred
+        for (const fileId of uploadedFileIds) { // Iterate directly over ObjectIds
+            if (fileId && gfsBucket) { // Check if fileId and gfsBucket are defined
+                try {
+                    await gfsBucket.delete(fileId); // Use fileId directly
+                    console.log(`🧹 Deleted uploaded file due to error: ${fileId}`);
+                } catch (deleteErr) {
+                    console.error(`❌ Failed to delete file ${fileId} during rollback:`, deleteErr.message);
+                }
+            }
         }
-        if (error instanceof multer.MulterError) {
-            return res.status(400).json({ error: `File upload error: ${error.message}` });
-        }
-        res.status(500).json({ error: "An error occurred while submitting the form." });
+        res.status(500).json({ error: 'Failed to submit UG3A form.', details: error.message });
     }
 });
 
-// --- Route for Retrieving Files from GridFS (Fix: Add validation for fileId) ---
-router.get('/file/:fileId', async (req, res) => {
+// GET all UG3A forms
+router.get('/all', async (req, res) => {
     try {
-        const fileIdString = req.params.fileId;
+        const forms = await UG3AForm.find({});
+        res.status(200).json(forms);
+    } catch (error) {
+        console.error("Error fetching all UG3A forms:", error);
+        res.status(500).json({ message: "Server error fetching forms." });
+    }
+});
 
-        // Validate if fileIdString is a valid MongoDB ObjectId format (24 hex characters)
-        if (!mongoose.Types.ObjectId.isValid(fileIdString)) {
-            console.error('Invalid file ID format received:', fileIdString);
-            return res.status(400).json({ error: 'Invalid file ID format. Must be a 24-character hex string.' });
+// GET UG3A form by ID
+router.get('/:formId', async (req, res) => {
+    try {
+        const form = await UG3AForm.findById(req.params.formId);
+        if (!form) return res.status(404).json({ message: "UG3A form not found." });
+        res.status(200).json(form);
+    } catch (error) {
+        console.error("Error fetching UG3A form by ID:", error);
+        res.status(500).json({ message: "Server error fetching form." });
+    }
+});
+
+// PUT (update) UG3A form status
+router.put('/:formId/review', async (req, res) => {
+    const { formId } = req.params;
+    const { status, remarks } = req.body;
+
+    try {
+        const form = await UG3AForm.findById(formId);
+        if (!form) {
+            return res.status(404).json({ message: "UG3A form not found." });
         }
 
-        const fileId = new mongoose.Types.ObjectId(fileIdString); // Create ObjectId only after validation
+        form.status = status || form.status;
+        form.remarks = remarks || form.remarks; // Assuming a remarks field
+        await form.save();
 
-        if (!mongoose.connection.readyState) {
-            return res.status(500).json({ error: "Database connection not ready." });
+        res.status(200).json({ message: "UG3A form review updated successfully." });
+    } catch (error) {
+        console.error("Error updating UG3A form review:", error);
+        res.status(500).json({ message: "Server error updating form review." });
+    }
+});
+
+router.get('/file/:id', async (req, res) => {
+    try {
+        if (!gfsBucket) {
+            return res.status(500).json({ error: 'GridFSBucket not initialized.' });
         }
-        const db = mongoose.connection.db;
-        const bucket = new GridFSBucket(db, { bucketName: 'uploads' });
 
-        const files = await bucket.find({ _id: fileId }).toArray();
-        if (files.length === 0) {
-            return res.status(404).json({ error: 'File not found in GridFS.' });
+        const fileId = new mongoose.Types.ObjectId(req.params.id);
+        const files = await gfsBucket.find({ _id: fileId }).toArray();
+
+        if (!files || files.length === 0) {
+            return res.status(404).json({ error: 'File not found.' });
         }
 
         const file = files[0];
-
-        res.set('Content-Type', file.contentType || 'application/octet-stream');
-        res.set('Content-Disposition', `inline; filename="${file.filename}"`);
-
-        const downloadStream = bucket.openDownloadStream(fileId);
-
-        downloadStream.on('error', (err) => {
-            console.error('Error in GridFS download stream:', err);
-            res.status(500).json({ error: 'Error retrieving file from GridFS.' });
-        });
-
-        downloadStream.pipe(res);
-
+        res.set('Content-Type', file.contentType);
+        const readStream = gfsBucket.openDownloadStream(fileId);
+        readStream.pipe(res);
     } catch (error) {
-        console.error('Error retrieving file from GridFS:', error);
-        // The BSONTypeError is now handled by the explicit isValid check, but keep a general catch-all
-        res.status(500).json({ error: 'Server error while retrieving file.' });
+        console.error('Error fetching file:', error);
+        res.status(500).json({ error: 'Error fetching file.' });
     }
 });
 

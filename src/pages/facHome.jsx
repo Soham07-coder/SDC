@@ -12,7 +12,7 @@ const forms = [
   { id: "PG_1", path : "fac-pg1", category: "Professional Development Through Workshops/STTPs", title: "Post Graduate Form 1" },
   { id: "PG_2_A",path: "fac-pg2a" , category: "PG2 Participation in Project Competition", title: "Post Graduate Form 2A" },
   { id: "PG_2_B",path : "fac-pg2b" , category: "PG2 Participation in Reputed Conference", title: "Post Graduate Form 2B" },
-  { id: "R1", path : "r1" , category: "Publication in Reputed Journals/Papers", title: "Research Form 1" }
+  { id: "R1", path : "fac-r1" , category: "Publication in Reputed Journals/Papers", title: "Research Form 1" }
 ];
 
 const Fachome = () => {

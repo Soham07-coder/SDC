@@ -5,11 +5,8 @@ import JSZip from "jszip";
 
 // FilePreview Component (moved inside the same file for simplicity, or can be a separate file)
 const FilePreview = ({ fileList, onRemove, fieldName, viewOnly, isStudent }) => {
-  // Do not render anything if viewOnly and student for the specific fieldName 'uploadedFiles'
-  // For signatures, we might still want to show them in viewOnly mode for students.
-  // The original request was "still the files are visible", implying all files.
-  // Let's apply the "return null" logic to the 'uploadedFiles' section only,
-  // and for signatures, just hide the remove button.
+
+  console.log(`FilePreview for ${fieldName}:`, { fileList, viewOnly, isStudent });
   if (fieldName === 'uploadedFiles' && viewOnly && isStudent) {
     return null; // Completely hide the section for students in viewOnly mode for additional documents
   }
@@ -37,8 +34,8 @@ const FilePreview = ({ fileList, onRemove, fieldName, viewOnly, isStudent }) => 
       {filteredFiles.map((fileInfo, index) => {
         const isUploadedFile = !!(fileInfo.url || fileInfo.fileId || fileInfo.id);
         const displayUrl = fileInfo.url ||
-                           (fileInfo.fileId ? `/api/pg1form/file/${fileInfo.fileId}` : null) ||
-                           (fileInfo.id ? `/api/pg1form/file/${fileInfo.id}` : null);
+                           (fileInfo.fileId ? `/api/ug1form/file/${fileInfo.fileId}` : null) ||
+                           (fileInfo.id ? `/api/ug1form/file/${fileInfo.id}` : null);
 
         const fileName = fileInfo.name || (fileInfo.filename || (fileInfo.file ? fileInfo.file.name : 'Unnamed File'));
         const fileSizeMB = fileInfo.file ? (fileInfo.file.size / (1024 * 1024)).toFixed(2) : (fileInfo.size ? (fileInfo.size / (1024 * 1024)).toFixed(2) : 'N/A');
@@ -95,7 +92,6 @@ const FilePreview = ({ fileList, onRemove, fieldName, viewOnly, isStudent }) => 
   );
 };
 
-
 const UG1Form = ({ data = null, viewOnly = false }) => {
   // Initial form data structure
   const initialFormData = {
@@ -138,9 +134,19 @@ const UG1Form = ({ data = null, viewOnly = false }) => {
 
   // Effect to load user role from localStorage
   useEffect(() => {
-    const role = localStorage.getItem("currentUserRole");
-    if (role) {
-      setCurrentUserRole(role);
+  const storedUser = localStorage.getItem("user");
+  if (storedUser) {
+    const parsedUser = JSON.parse(storedUser);
+    if (parsedUser.role) {
+      setCurrentUserRole(parsedUser.role);
+    }
+  }
+}, []);
+
+  useEffect(() => {
+    const currentUserId = localStorage.getItem("svvNetId");
+    if (currentUserId) {
+      setFormData((prev) => ({ ...prev, svvNetId: currentUserId }));
     }
   }, []);
 
@@ -153,8 +159,8 @@ const UG1Form = ({ data = null, viewOnly = false }) => {
         projectDescription: data.projectDescription || "",
         finance: data.finance || "",
         guideNames: data.guideNames && data.guideNames.length > 0 ? data.guideNames : [""],
-        employeeCodes: data.employeeCodes && data.employeeCodes.length > 0 ? data.employeeCodes : [""],
-        svvNetId: data.svvNetId || "",
+        employeeCodes: data.employeeCodes && data.employeeCodes.length > 0 ? data.employeeCodes : [""],
+        svvNetId: data.svvNetId || formData.svvNetId || "",
         studentDetails: data.studentDetails || Array(4).fill({
           branch: "",
           yearOfStudy: "",
@@ -167,36 +173,62 @@ const UG1Form = ({ data = null, viewOnly = false }) => {
       });
       setFormId(data._id || null);
 
-      // Populate signature states from data
-      if (data.groupLeaderSignature) {
+      if (data.groupLeaderSignature && data.groupLeaderSignature.id) { // Use .id as per getFileDetailsAndUrl return
         setGroupLeaderSignature({
+          fileId: data.groupLeaderSignature.id,
           url: data.groupLeaderSignature.url,
-          name: data.groupLeaderSignature.name,
-          size: data.groupLeaderSignature.size,
-          id: data.groupLeaderSignature.id, // Assuming an ID for backend reference
-          fileId: data.groupLeaderSignature.fileId // Assuming fileId if used
+          name: data.groupLeaderSignature.originalName || "Group Leader Signature",
+          size: data.groupLeaderSignature.size
         });
-        originalGroupLeaderSignatureRef.current = { ...data.groupLeaderSignature };
       } else {
         setGroupLeaderSignature(null);
-        originalGroupLeaderSignatureRef.current = null;
       }
 
-      if (data.guideSignature) {
+      // Correct Guide Signature Mapping
+      // data.guideSignature should now be the processed object
+      if (data.guideSignature && data.guideSignature.id) { // Use .id as per getFileDetailsAndUrl return
         setGuideSignature({
+          fileId: data.guideSignature.id,
           url: data.guideSignature.url,
-          name: data.guideSignature.name,
-          size: data.guideSignature.size,
-          id: data.guideSignature.id,
-          fileId: data.guideSignature.fileId
+          name: data.guideSignature.originalName || "Guide Signature",
+          size: data.guideSignature.size
         });
-        originalGuideSignatureRef.current = { ...data.guideSignature };
       } else {
         setGuideSignature(null);
-        originalGuideSignatureRef.current = null;
       }
     }
   }, [data]);
+
+  useEffect(() => {
+    if (data && viewOnly) {
+      // Existing PDF mapping
+      setFormData((prev) => ({
+        ...prev,
+        uploadedFiles: (data.pdfFileIds || []).map((fileId) => ({
+          fileId: fileId,
+          url: `/api/ug1form/uploads/files/${fileId}`
+        }))
+      }));
+
+      // Correct Group Leader Signature Mapping
+      if (data.groupLeaderSignatureId && data.groupLeaderSignatureId.$oid) {
+        setGroupLeaderSignature({
+          fileId: data.groupLeaderSignatureId.$oid,
+          url: `/api/ug1form/uploads/files/${data.groupLeaderSignatureId.$oid}`,
+          name: "Group Leader Signature"
+        });
+      }
+
+      // Correct Guide Signature Mapping
+      if (data.guideSignatureId && data.guideSignatureId.$oid) {
+        setGuideSignature({
+          fileId: data.guideSignatureId.$oid,
+          url: `/api/ug1form/uploads/files/${data.guideSignatureId.$oid}`,
+          name: "Guide Signature"
+        });
+      }
+    }
+  }, [data, viewOnly]);
 
   // Determine if core inputs should be disabled (viewOnly or submitting)
   const disableCoreInputs = viewOnly || isSubmitting;
@@ -385,102 +417,87 @@ const UG1Form = ({ data = null, viewOnly = false }) => {
     setIsSubmitting(true);
     setErrorMessage("");
 
-    // Basic validation example
+    // Basic validation
     if (!formData.projectTitle || !formData.projectDescription) {
-      setErrorMessage("Please fill in all required fields.");
-      setIsSubmitting(false);
-      return;
+        setErrorMessage("Please fill in all required fields.");
+        setIsSubmitting(false);
+        return;
     }
-
-    // Prepare data for submission
-    const dataToSubmit = new FormData();
-    dataToSubmit.append("projectTitle", formData.projectTitle);
-    dataToSubmit.append("projectUtility", formData.projectUtility);
-    dataToSubmit.append("projectDescription", formData.projectDescription);
-    dataToSubmit.append("finance", formData.finance);
-    dataToSubmit.append("guideNames", JSON.stringify(formData.guideNames));
-    dataToSubmit.append("employeeCodes", JSON.stringify(formData.employeeCodes));
-    dataToSubmit.append("svvNetId", formData.svvNetId);
-    dataToSubmit.append("studentDetails", JSON.stringify(formData.studentDetails));
-    dataToSubmit.append("status", formData.status);
-
-    // Append signature files
-    if (groupLeaderSignature && groupLeaderSignature.file) {
-      dataToSubmit.append("groupLeaderSignature", groupLeaderSignature.file);
-    } else if (originalGroupLeaderSignatureRef.current && originalGroupLeaderSignatureRef.current.url) {
-      // If no new file but existing URL, send a flag or ID to retain it
-      dataToSubmit.append("groupLeaderSignature", JSON.stringify(originalGroupLeaderSignatureRef.current));
-    } else if (groupLeaderSignature === null) {
-        dataToSubmit.append("groupLeaderSignature", "removed"); // Explicitly indicate removal
-    }
-
-    if (guideSignature && guideSignature.file) {
-      dataToSubmit.append("guideSignature", guideSignature.file);
-    } else if (originalGuideSignatureRef.current && originalGuideSignatureRef.current.url) {
-      dataToSubmit.append("guideSignature", JSON.stringify(originalGuideSignatureRef.current));
-    } else if (guideSignature === null) {
-        dataToSubmit.append("guideSignature", "removed");
-    }
-
-    // Append uploaded files
-    const zipFiles = formData.uploadedFiles.filter(f => f.type === "application/zip" || f.type === "application/x-zip-compressed");
-    const pdfFiles = formData.uploadedFiles.filter(f => f.type === "application/pdf");
-
-    if (zipFiles.length > 0 && zipFiles[0].file) { // If a new zip file was selected
-      dataToSubmit.append("uploadedZip", zipFiles[0].file);
-    } else if (zipFiles.length > 0 && zipFiles[0].url) { // If an existing zip file
-        dataToSubmit.append("uploadedZip", JSON.stringify(zipFiles[0]));
-    } else if (zipFiles.length === 0 && data && data.uploadedFiles.some(f => f.type === "application/zip" || f.type === "application/x-zip-compressed")) {
-        dataToSubmit.append("uploadedZip", "removed"); // Existing zip was removed
-    }
-
-
-    if (pdfFiles.length > 0) {
-      pdfFiles.forEach((fileObj, index) => {
-        if (fileObj.file) { // If it's a new file object
-          dataToSubmit.append(`uploadedPdf_${index}`, fileObj.file);
-        } else if (fileObj.url) { // If it's an existing file from backend
-          dataToSubmit.append(`uploadedPdf_${index}`, JSON.stringify(fileObj));
-        }
-      });
-    } else if (pdfFiles.length === 0 && data && data.uploadedFiles.some(f => f.type === "application/pdf")) {
-        // If there were PDFs previously and now there are none, signal removal
-        dataToSubmit.append("uploadedPdf", "removed");
-    }
-
 
     try {
-      let response;
-      if (formId) {
-        // Update existing form
-        response = await axios.put(`/api/ug1form/${formId}`, dataToSubmit, {
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
+        const fullFormData = new FormData();
+
+        // Append all text fields
+        fullFormData.append("svvNetId", formData.svvNetId);
+        fullFormData.append("projectTitle", formData.projectTitle);
+        fullFormData.append("projectUtility", formData.projectUtility);
+        fullFormData.append("projectDescription", formData.projectDescription);
+        fullFormData.append("finance", formData.finance);
+        fullFormData.append("amountClaimed", formData.amountClaimed || ''); // Ensure it's not undefined if not always present
+        fullFormData.append("status", formData.status);
+
+        // Stringify studentDetails (this is already correct, assuming it's always an array of objects)
+        fullFormData.append("studentDetails", JSON.stringify(formData.studentDetails));
+
+        // --- CORRECTED LOGIC FOR GUIDES ---
+        // Construct the 'guides' array from guideNames and employeeCodes
+        const formattedGuides = formData.guideNames.map((name, index) => ({
+            name: name,
+            employeeCode: formData.employeeCodes[index] // Ensure employeeCodes has a corresponding entry for each guideName
+        }));
+        fullFormData.append("guides", JSON.stringify(formattedGuides));
+
+        // Append files/signatures if they exist and are new
+        // Ensure 'file' property exists, as 'url' is just for preview
+        if (groupLeaderSignature && groupLeaderSignature.file) {
+            fullFormData.append("groupLeaderSignature", groupLeaderSignature.file);
+        }
+        if (guideSignature && guideSignature.file) {
+            fullFormData.append("guideSignature", guideSignature.file);
+        }
+
+        // Append PDF files (if present, filter out existing ones that are not new uploads)
+        // This loop handles both PDF and a single ZIP file based on your logic in handleFileUpload
+        formData.uploadedFiles.forEach(fileObj => {
+            if (fileObj.file && (fileObj.type === "application/pdf" || fileObj.type === "application/x-zip-compressed")) {
+                if (fileObj.type === "application/pdf") {
+                    fullFormData.append("pdfFiles", fileObj.file); // Match backend field name 'pdfFiles'
+                } else if (fileObj.type === "application/x-zip-compressed") {
+                    fullFormData.append("zipFile", fileObj.file); // Match backend field name 'zipFile'
+                }
+            }
         });
-        console.log("Form updated:", response.data);
-      } else {
-        // Create new form
-        response = await axios.post("/api/ug1form", dataToSubmit, {
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
-        });
-        console.log("Form submitted:", response.data);
-      }
-      // Using a custom message box instead of alert()
-      // You would implement a modal or notification system here
-      alert("Form submitted successfully!");
-      // Optionally redirect or clear form
+
+        // Send the single request
+        let formResponse;
+        if (formId) {
+            formResponse = await axios.post("/api/ug1form/saveFormData", fullFormData, { // Consider changing to axios.put if you have a dedicated update route
+                headers: { "Content-Type": "multipart/form-data" },
+            });
+            console.log("Form and files updated (consider PUT endpoint refactor):", formResponse.data);
+        } else {
+            // For new form creation
+            formResponse = await axios.post("/api/ug1form/saveFormData", fullFormData, {
+                headers: { "Content-Type": "multipart/form-data" },
+            });
+            console.log("Form and files saved:", formResponse.data);
+            setFormId(formResponse.data.id); // Set the formId from the response
+        }
+
+        alert("Form and files submitted successfully!");
+        // Optionally redirect or clear form
+
     } catch (error) {
-      console.error("Error submitting form:", error);
-      if (error.response && error.response.data && error.response.data.message) {
-        setErrorMessage(error.response.data.message);
-      } else {
-        setErrorMessage("An unexpected error occurred.");
-      }
+        console.error("Error submitting form:", error);
+        if (error.response && error.response.data && error.response.data.message) {
+            setErrorMessage(error.response.data.message);
+        } else if (error.response && error.response.data && error.response.data.error) {
+            setErrorMessage(error.response.data.error);
+        } else {
+            setErrorMessage("An unexpected error occurred.");
+        }
     } finally {
-      setIsSubmitting(false);
+        setIsSubmitting(false);
     }
   };
 
@@ -669,20 +686,19 @@ const UG1Form = ({ data = null, viewOnly = false }) => {
             )}
           </div>
         )}
-
         {/* Supporting Documents Section - File Preview (visible based on FilePreview's internal logic) */}
-        <div className="form-group">
-          <label>Supporting Documents:</label>
-          <FilePreview
-            fileList={formData.uploadedFiles}
-            onRemove={handleRemoveFile}
-            fieldName="uploadedFiles"
-            viewOnly={viewOnly}
-            isStudent={isStudent}
-          />
-        </div>
-
-
+        {!(viewOnly && isStudent) && (
+          <div className="form-group">
+            <label>Supporting Documents:</label>
+            <FilePreview
+              fileList={formData.uploadedFiles}
+              onRemove={handleRemoveFile}
+              fieldName="uploadedFiles"
+              viewOnly={viewOnly}
+              isStudent={isStudent}
+            />
+          </div>
+        )}
         <div className="form-actions">
           <button type="button" className="back-btn" onClick={handleBack} disabled={isSubmitting}>Back</button>
           {!viewOnly && (

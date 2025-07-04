@@ -445,7 +445,6 @@ const PG_2_A = ({ viewOnly = false, data = null }) => {
         ? "http://localhost:5000/api/pg2aform/submit"
         : `http://localhost:5000/api/pg2aform/update/${formData.formId}`;
       const httpMethod = isNewForm ? 'POST' : 'PUT';
-
       const response = await axios({
         method: httpMethod,
         url: apiUrl,
@@ -522,9 +521,8 @@ const PG_2_A = ({ viewOnly = false, data = null }) => {
           const isUploadedFile = !!(fileInfo.url || fileInfo.fileId || fileInfo.id);
           // Construct the display URL for existing files
           const displayUrl = fileInfo.url ||
-                             (fileInfo.fileId ? `/api/application/file/${fileInfo.fileId}` : null) || // Updated path
-                             (fileInfo.id ? `/api/application/file/${fileInfo.id}` : null); // Updated path
-
+                         (fileInfo.fileId ? `http://localhost:5000/api/pg2aform/file/${fileInfo.fileId}` : null) || // <-- Full path here
+                         (fileInfo.id ? `http://localhost:5000/api/pg2aform/file/${fileInfo.id}` : null);     // <-- Full path here
           // Determine the file name for display
           const fileName = fileInfo.name || (fileInfo.filename || (fileInfo.file ? fileInfo.file.name : 'Unnamed File'));
           // Determine file size for display

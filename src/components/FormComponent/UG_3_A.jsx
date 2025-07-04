@@ -40,19 +40,34 @@ const UG3AForm = ({ data = null, viewOnly = false }) => {
 
   const disableFileControls = viewOnly;
 
-  // State for user role, fetched from localStorage
-  const [currentUserRole, setCurrentUserRole] = useState('student'); // Default to 'student' if not found in localStorage
+  /// State for user role, fetched from localStorage
+  const [userRole, setUserRole] = useState(null);
 
-  // Determine if the current user is a student based on fetched role
-  const isStudent = currentUserRole === 'student';
+  // Derived state for convenience
+  const isStudent = userRole === 'student'; // Define isStudent here
 
-  // Effect to load user role from localStorage
   useEffect(() => {
-    const storedUserRole = localStorage.getItem("userRole");
-    if (storedUserRole) {
-      setCurrentUserRole(storedUserRole);
+    const storedSvvNetId = localStorage.getItem('svvNetId');
+    // Only set if a stored ID exists and formData.svvNetId is not already populated (e.g., from `data` prop)
+    if (storedSvvNetId && !formData.svvNetId) {
+      setFormData(prev => ({
+        ...prev,
+        svvNetId: storedSvvNetId
+      }));
     }
-  }, []); // Run once on component mount
+  }, [formData.svvNetId]);
+  
+  useEffect(() => {
+    const userString = localStorage.getItem("user");
+    if (userString) {
+      try {
+        const user = JSON.parse(userString);
+        setUserRole(user.role);
+      } catch (err) {
+        console.error("Failed to parse user data from local storage:", err);
+      }
+    }
+  }, []);
 
   // Effect to load data when in viewOnly mode or initial data is provided
   useEffect(() => {
@@ -403,7 +418,8 @@ const UG3AForm = ({ data = null, viewOnly = false }) => {
     if (!formData.bankDetails.accountType) errors.accountType = "Account type is required.";
 
     setValidationErrors(errors);
-
+    console.log("Errors Object:", errors); // ✅ Log errors object
+    console.log("Is form valid?", Object.keys(errors).length === 0); // ✅ Log if the form is valid
     return Object.keys(errors).length === 0;
   }, [formData, files, data, viewOnly]);
 
@@ -414,8 +430,9 @@ const UG3AForm = ({ data = null, viewOnly = false }) => {
     if (!validateForm()) {
       setErrorMessage("Please correct the errors in the form.");
       return;
+    } else {
+      setValidationErrors({}); // 🔴 Add this to clear errors when form is valid
     }
-
     try {
       const formDataToSend = new FormData();
 
@@ -599,11 +616,7 @@ const UG3AForm = ({ data = null, viewOnly = false }) => {
       
       <div className="mb-8">
         <h2 className="text-xl font-semibold mb-4 text-center">Application Form</h2>
-        
-        {errorMessage && (
-          <div className="bg-red-200 text-red-800 p-3 mb-4 rounded">{errorMessage}</div>
-        )}
-
+      
       <div className="mb-6">
           <label htmlFor="organizingInstitute" className="block font-semibold mb-2">Name and Address of Organizing Institute:</label>
           <input
@@ -1002,87 +1015,72 @@ const UG3AForm = ({ data = null, viewOnly = false }) => {
           </tr>
         </tbody>
     </table>
-      <div className="mb-6 border p-4 rounded shadow-sm">
-      <h3 className="text-lg font-semibold mb-3">File Uploads</h3>
 
-      {/* Upload Project Image */}
-      <div className="mb-4">
-        <label className="block text-gray-700 text-sm font-bold mb-2">
-          Upload Image (JPEG/PNG, Max 5MB)
-        </label>
-        {!viewOnly && (
+      {/* Image Upload Section */}
+      <div className="form-group">
+        <label htmlFor="imageUpload">Upload Image (JPEG/PNG Only)</label>
+        {/* Image upload input is only visible for students when NOT in viewOnly mode */}
+        {!viewOnly && isStudent && (
           <input
             type="file"
-            accept="image/jpeg, image/png"
+            id="imageUpload"
+            accept=".jpeg,.jpg,.png,image/jpeg,image/png"
             onChange={(e) => handleFileChange('image', e)}
             ref={imageInputRef}
-            className="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         )}
-        {files.image && files.image.file && (
-          <FilePreview
-            fileInfo={files.image}
-            type="image"
-            index={0}
-          />
-        )}
-        {validationErrors.image && <p className="text-red-500 text-sm mt-1">{validationErrors.image}</p>}
+        {/* FilePreview component will handle visibility based on userRole and viewOnly */}
+        {FilePreview(files.image, 'image')}
+        {validationErrors.image && <p className="error-message">{validationErrors.image}</p>}
       </div>
 
-      {/* Upload Supporting PDFs */}
-      <div className="mb-4">
-        <label htmlFor="pdfDocuments" className="block text-sm font-medium text-gray-700">
-          Supporting PDF Documents (Max 5 files, 5MB each, PDF only)
-        </label>
-        {!viewOnly && (
+      {/* PDF Upload Section */}
+      <div className="form-group">
+        <label htmlFor="pdfUpload">Upload PDFs (Max 5 files, 5MB each)</label>
+        {/* PDF upload input is only visible for students when NOT in viewOnly mode */}
+        {!viewOnly && isStudent && (
           <input
             type="file"
-            id="pdfDocuments"
-            name="pdfDocuments"
-            accept="application/pdf"
+            id="pdfUpload"
+            accept=".pdf,application/pdf"
             multiple
             onChange={(e) => handleFileChange('pdfs', e)}
             ref={pdfsInputRef}
-            className="mt-1 block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none"
           />
         )}
-        {files.pdfs && files.pdfs.map((file, idx) => (
-          <FilePreview
-            key={idx}
-            fileInfo={file}
-            type="pdfs"
-            index={idx}
-          />
-        ))}
-        {validationErrors.pdfs && <p className="text-red-500 text-sm mt-1">{validationErrors.pdfs}</p>}
+        {files.pdfs.length > 0 && (
+          <div className="uploaded-files-list">
+            <h4>Uploaded PDFs:</h4>
+            <ul>
+              {/* FilePreview component will handle visibility for each PDF */}
+              {files.pdfs.map((file, index) => (
+                <li key={index}>
+                  {FilePreview(file, 'pdfs', index)}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {validationErrors.pdfs && <p className="error-message">{validationErrors.pdfs}</p>}
       </div>
 
-      {/* Upload Remaining Documents (ZIP) */}
-      <div className="mb-4">
-        <label htmlFor="zipFiles" className="block text-sm font-medium text-gray-700">
-          Additional Documents ZIP (Max 1 file, 5MB, ZIP only)
-        </label>
-        {!viewOnly && (
+      {/* ZIP File Upload Section */}
+      <div className="form-group">
+        <label htmlFor="zipUpload">Upload ZIP File (Max 1 file, 20MB)</label>
+        {/* ZIP upload input is only visible for students when NOT in viewOnly mode */}
+        {!viewOnly && isStudent && (
           <input
             type="file"
-            id="zipFiles"
-            name="zipFiles"
+            id="zipUpload"
             accept=".zip,application/zip,application/x-zip-compressed"
             onChange={(e) => handleFileChange('zipFile', e)}
             ref={zipFileInputRef}
-            className="mt-1 block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none"
           />
         )}
-        {files.zipFile && files.zipFile.file && (
-          <FilePreview
-            fileInfo={files.zipFile}
-            type="zipFile"
-            index={0}
-          />
-        )}
-        {validationErrors.zipFile && <p className="text-red-500 text-sm mt-1">{validationErrors.zipFile}</p>}
+        {/* FilePreview component will handle visibility for the ZIP file */}
+        {FilePreview(files.zipFile, 'zipFile')}
+        {validationErrors.zipFile && <p className="error-message">{validationErrors.zipFile}</p>}
       </div>
-    </div>
 
         {/* Form Actions */}
         {!viewOnly && (
