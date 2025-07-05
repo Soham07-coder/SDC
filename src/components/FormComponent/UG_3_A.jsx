@@ -25,6 +25,7 @@ const UG3AForm = ({ data = null, viewOnly = false }) => {
   );
   const [totalAmount, setTotalAmount] = useState(0);
 
+  
   const [files, setFiles] = useState({
     image: { file: null, url: null, name: null, fileId: null, size: null }, // Initialize with size property
     pdfs: [],
@@ -40,23 +41,9 @@ const UG3AForm = ({ data = null, viewOnly = false }) => {
 
   const disableFileControls = viewOnly;
 
-  /// State for user role, fetched from localStorage
   const [userRole, setUserRole] = useState(null);
+  const isStudent = userRole === 'student';
 
-  // Derived state for convenience
-  const isStudent = userRole === 'student'; // Define isStudent here
-
-  useEffect(() => {
-    const storedSvvNetId = localStorage.getItem('svvNetId');
-    // Only set if a stored ID exists and formData.svvNetId is not already populated (e.g., from `data` prop)
-    if (storedSvvNetId && !formData.svvNetId) {
-      setFormData(prev => ({
-        ...prev,
-        svvNetId: storedSvvNetId
-      }));
-    }
-  }, [formData.svvNetId]);
-  
   useEffect(() => {
     const userString = localStorage.getItem("user");
     if (userString) {
@@ -68,6 +55,18 @@ const UG3AForm = ({ data = null, viewOnly = false }) => {
       }
     }
   }, []);
+
+  useEffect(() => {
+    const storedSvvNetId = localStorage.getItem('svvNetId');
+    // Only set if a stored ID exists and formData.svvNetId is not already populated (e.g., from `data` prop)
+    if (storedSvvNetId && !formData.svvNetId) {
+      setFormData(prev => ({
+        ...prev,
+        svvNetId: storedSvvNetId
+      }));
+    }
+  }, [formData.svvNetId]);
+
 
   // Effect to load data when in viewOnly mode or initial data is provided
   useEffect(() => {
@@ -1029,8 +1028,8 @@ const UG3AForm = ({ data = null, viewOnly = false }) => {
             ref={imageInputRef}
           />
         )}
-        {/* FilePreview component will handle visibility based on userRole and viewOnly */}
-        {FilePreview(files.image, 'image')}
+        {/* File preview is visible ONLY if user is NOT a student OR user is a student and NOT in viewOnly mode */}
+        {(userRole !== 'student' || !viewOnly) && FilePreview(files.image, 'image')}
         {validationErrors.image && <p className="error-message">{validationErrors.image}</p>}
       </div>
 
@@ -1048,11 +1047,10 @@ const UG3AForm = ({ data = null, viewOnly = false }) => {
             ref={pdfsInputRef}
           />
         )}
-        {files.pdfs.length > 0 && (
+        {files.pdfs.length > 0 && (userRole !== 'student' || !viewOnly) && (
           <div className="uploaded-files-list">
             <h4>Uploaded PDFs:</h4>
             <ul>
-              {/* FilePreview component will handle visibility for each PDF */}
               {files.pdfs.map((file, index) => (
                 <li key={index}>
                   {FilePreview(file, 'pdfs', index)}
@@ -1077,8 +1075,7 @@ const UG3AForm = ({ data = null, viewOnly = false }) => {
             ref={zipFileInputRef}
           />
         )}
-        {/* FilePreview component will handle visibility for the ZIP file */}
-        {FilePreview(files.zipFile, 'zipFile')}
+        {(userRole !== 'student' || !viewOnly) && FilePreview(files.zipFile, 'zipFile')}
         {validationErrors.zipFile && <p className="error-message">{validationErrors.zipFile}</p>}
       </div>
 

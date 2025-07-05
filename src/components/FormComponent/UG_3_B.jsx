@@ -30,6 +30,7 @@ const UG_3_B = ({ viewOnly = false, data = null }) => {
         amountSanctioned: data.amountSanctioned || '',
         status: data.status || 'pending',
         svvNetId: data.svvNetId || '',
+        department: data.department || '',
       };
     } else {
       return {
@@ -59,6 +60,7 @@ const UG_3_B = ({ viewOnly = false, data = null }) => {
         amountSanctioned: '',
         status: 'pending',
         svvNetId: '',
+        department: '', 
       };
     }
   });
@@ -92,18 +94,16 @@ const UG_3_B = ({ viewOnly = false, data = null }) => {
         amountSanctioned: data.amountSanctioned || '',
         status: data.status || 'pending',
         svvNetId: data.svvNetId || '',
+        department: data.department || '', 
       });
   
-      if (data.files) {
-        setFiles({
-          paperCopy: data.files.paperCopy || null,
-          groupLeaderSignature: data.files.groupLeaderSignature || null,
-          guideSignature: data.files.guideSignature || null,
-          additionalDocuments: data.files.additionalDocuments || null,
-          pdfDocuments: data.files.pdfDocuments || [],
-          zipFiles: data.files.zipFiles || []
-        });
-      }
+      setFiles({
+        paperCopy: data.paperCopy || null,
+        groupLeaderSignature: data.groupLeaderSignature || null,
+        guideSignature: data.guideSignature || null,
+        pdfFileUrls: data.pdfFileUrls || [],
+        zipFile: data.zipFile || null
+      });
     }
   }, [data, viewOnly]);
   
@@ -111,8 +111,8 @@ const UG_3_B = ({ viewOnly = false, data = null }) => {
     paperCopy: null,
     groupLeaderSignature: null,
     guideSignature: null,
-    pdfDocuments: [],
-    zipFiles: []
+    pdfFileUrls: [], // ✅ Rename this to match the backend processed field
+    zipFile: null    // ✅ Single object, not an array
   });
   const [errors, setErrors] = useState({});
   
@@ -131,6 +131,34 @@ const UG_3_B = ({ viewOnly = false, data = null }) => {
     }));
   };
   
+  const [userRole, setUserRole] = useState(null);
+  const isStudent = userRole === 'student';
+  const [userDepartment, setUserDepartment] = useState(null); // ✅ New
+  // Fetch role from localStorage
+  useEffect(() => {
+    const userString = localStorage.getItem("user");
+    if (userString) {
+      try {
+        const user = JSON.parse(userString);
+        setUserRole(user.role);
+      } catch (err) {
+        console.error("Failed to parse user data from local storage:", err);
+      }
+    }
+  }, []);
+  useEffect(() => {
+    const userString = localStorage.getItem("user");
+    if (userString) {
+      try {
+        const user = JSON.parse(userString);
+        setUserRole(user.role);
+        setUserDepartment(user.branch || '');  // ✅ Fetch department
+      } catch (err) {
+        console.error("Failed to parse user data from local storage:", err);
+      }
+    }
+  }, []);
+
   const handleAuthorChange = (index, value) => {
     if (viewOnly) return;
     const newAuthors = [...formData.authors];
@@ -262,11 +290,13 @@ const UG_3_B = ({ viewOnly = false, data = null }) => {
     console.log('files:', files);
 
     const submitData = new FormData();
-    submitData.append('svvNetId', svvNetId); // ✅ Only append once
+    submitData.append('svvNetId', svvNetId); 
+    submitData.append('department', userDepartment); // ✅ Only append once
 
     // Append regular fields
     for (const key in formData) {
-      if (key === 'svvNetId') continue; // ✅ Avoid duplicating svvNetId
+      if (key === 'svvNetId' || key === 'department') continue; // ✅ Skip both
+
       if (key === 'authors') {
         formData.authors
           .filter(author => author.trim() !== '')
@@ -278,7 +308,7 @@ const UG_3_B = ({ viewOnly = false, data = null }) => {
       } else {
         submitData.append(key, formData[key]);
       }
-    }
+   }
 
     // Append single files
     ['paperCopy', 'groupLeaderSignature', 'guideSignature', 'additionalDocuments'].forEach(key => {
@@ -770,9 +800,67 @@ const UG_3_B = ({ viewOnly = false, data = null }) => {
           <div className="mb-6 space-y-4">
             <div>
               <label className="block font-semibold mb-2">Attached Documents:</label>
-              <div className="bg-gray-100 p-3 rounded border">
-                <p className="text-sm text-gray-600">Document uploads are not displayed in read-only mode</p>
-              </div>
+
+              {userRole !== 'student' ? (
+                <div className="bg-gray-100 p-3 rounded border space-y-2">
+
+                  {/* Paper Copy */}
+                  {files.paperCopy && (
+                    <p>
+                      Paper Copy: <a href={files.paperCopy.url} target="_blank" rel="noopener noreferrer" className="text-blue-500 underline">View File</a>
+                    </p>
+                  )}
+
+                  {/* Group Leader Signature */}
+                  {files.groupLeaderSignature && (
+                    <p>
+                      Group Leader Signature: <a href={files.groupLeaderSignature.url} target="_blank" rel="noopener noreferrer" className="text-blue-500 underline">View File</a>
+                    </p>
+                  )}
+
+                  {/* Guide Signature */}
+                  {files.guideSignature && (
+                    <p>
+                      Guide Signature: <a href={files.guideSignature.url} target="_blank" rel="noopener noreferrer" className="text-blue-500 underline">View File</a>
+                    </p>
+                  )}
+
+                  {/* PDF Files */}
+                  {files.pdfFileUrls && files.pdfFileUrls.length > 0 && (
+                    <div>
+                      <p>PDF Documents:</p>
+                      <ul className="list-disc ml-5">
+                        {files.pdfFileUrls.map((file, idx) => (
+                          <li key={idx}>
+                            <a href={file.url} target="_blank" rel="noopener noreferrer" className="text-blue-500 underline">
+                              {file.originalName || file.filename}
+                            </a>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* ZIP File */}
+                  {files.zipFile && (
+                    <div>
+                      <p>ZIP File:</p>
+                      <ul className="list-disc ml-5">
+                        <li>
+                          <a href={files.zipFile.url} target="_blank" rel="noopener noreferrer" className="text-blue-500 underline">
+                            {files.zipFile.originalName || files.zipFile.filename}
+                          </a>
+                        </li>
+                      </ul>
+                    </div>
+                  )}
+
+                </div>
+              ) : (
+                <div className="bg-gray-100 p-3 rounded border">
+                  <p className="text-sm text-gray-600">Document previews are not available for students in read-only mode.</p>
+                </div>
+              )}
             </div>
           </div>
         )}

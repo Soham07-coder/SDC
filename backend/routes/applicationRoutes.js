@@ -21,11 +21,22 @@ const fileBaseUrlMapper = {
     "UG_1": "/api/ug1form/uploads/files",
     "UG_2": "/api/ug2form/uploads/files",
     "UG_3_A": "/api/ug3aform/file", 
-    "UG_3_B": "/api/ug3bform/uploads/files",
+    "UG_3_B": "/api/ug3bform/file",
     "PG_1": "/api/pg1form/uploads/files",
     "PG_2_A": "/api/pg2aform/uploads/files",
     "PG_2_B": "/api/pg2bform/uploads/files",
     "R1": "/api/r1form/uploads/files",
+};
+
+const bucketMapper = {
+    "UG_1": "uploads",
+    "UG_2": "uploads",
+    "UG_3_A": "uploads",
+    "UG_3_B": "ug3bFiles", // UG3B has a dedicated bucket
+    "PG_1": "pg1files",
+    "PG_2_A": "pg2afiles",
+    "PG_2_B": "pg2bfiles",
+    "R1": "r1files",
 };
 
 // Initialize GridFSBucket once the MongoDB connection is open
@@ -46,24 +57,17 @@ conn.once("open", () => {
  * @param {Object} gfsBucket - The GridFS bucket instance for file operations.
  * @returns {Promise<{id: string, originalName: string, filename: string, mimetype: string, size: number, url: string} | null>} - File details or null.
  */
-const getFileDetailsAndUrl = async (fileId, baseUrlForServingFile, gfsBucket) => {
+const getFileDetailsAndUrl = async (fileId, baseUrlForServingFile, formType, mongooseConnection) => {
     console.log(`\n🔍 getFileDetailsAndUrl Called`);
     console.log(`🔑 Received fileId: ${fileId}`);
     console.log(`🌐 Base URL: ${baseUrlForServingFile}`);
+    console.log(`🗂️ Form Type: ${formType}`);
 
-    // Check 1: fileId validity
     if (!fileId) {
         console.warn(`❌ fileId is null/undefined for baseUrl: ${baseUrlForServingFile}.`);
         return null;
     }
 
-    // Check 2: gfsBucket existence
-    if (!gfsBucket) {
-        console.warn(`❌ gfsBucket is not initialized.`);
-        return null;
-    }
-
-    // Check 3: ObjectId validation
     const isValidObjectId = mongoose.Types.ObjectId.isValid(fileId);
     console.log(`✅ ObjectId valid: ${isValidObjectId}`);
 
@@ -71,6 +75,12 @@ const getFileDetailsAndUrl = async (fileId, baseUrlForServingFile, gfsBucket) =>
         console.warn(`❌ Invalid ObjectId format: ${fileId}`);
         return null;
     }
+
+    // Select correct bucket based on form type
+    const bucketName = bucketMapper[formType] || 'uploads';
+    console.log(`🪣 Using GridFS bucket: ${bucketName}`);
+
+    const gfsBucket = new mongoose.mongo.GridFSBucket(mongooseConnection.db, { bucketName });
 
     try {
         console.log(`🔍 Searching in GridFS with ID: ${fileId}...`);
@@ -88,7 +98,7 @@ const getFileDetailsAndUrl = async (fileId, baseUrlForServingFile, gfsBucket) =>
                 filename: fileData.filename,
                 mimetype: fileData.contentType,
                 size: fileData.length,
-                url: `${baseUrlForServingFile}/${fileData._id.toString()}`,
+                url: `${baseUrlForServingFile}/${fileData._id.toString()}?bucket=${bucketName}`, // ✅ Attach bucket name in URL
             };
         } else {
             console.warn(`❌ File with ID "${fileId}" not found in the GridFS bucket.`);
@@ -99,7 +109,6 @@ const getFileDetailsAndUrl = async (fileId, baseUrlForServingFile, gfsBucket) =>
 
     return null;
 };
-
 /**
  * Helper: Processes a raw form object to include file URLs and standardizes fields for display.
  * @param {Object} form - The raw Mongoose document (after .lean() or .toObject())
@@ -108,22 +117,16 @@ const getFileDetailsAndUrl = async (fileId, baseUrlForServingFile, gfsBucket) =>
  * @param {Object} gfsBucket - The GridFS bucket instance for file operations.
  * @returns {Promise<Object>} - The processed form object with URLs and standardized fields.
  */
-const processFormForDisplay = async (form, formType, userBranchFromRequest, gfsBucket) => { // Added gfsBucket parameter
+const processFormForDisplay = async (form, formType, userBranchFromRequest) => {
     let processedForm = { ...form };
 
     const getObjectIdString = (idField) => {
-        if (typeof idField === 'string') {
-            return idField;
-        }
-        if (idField && typeof idField === 'object' && idField.$oid) {
-            return idField.$oid;
-        }
-        if (idField && mongoose.Types.ObjectId.isValid(idField)) {
-            return idField.toString();
-        }
-        return null; // Return null if the ID is not a valid string, $oid object, or ObjectId
+        if (typeof idField === 'string') return idField;
+        if (idField && typeof idField === 'object' && idField.$oid) return idField.$oid;
+        if (idField && mongoose.Types.ObjectId.isValid(idField)) return idField.toString();
+        return null;
     };
-    // Handle MongoDB ObjectId conversion for _id
+
     processedForm._id = form._id?.$oid || form._id?.toString() || form._id;
 
     processedForm.topic = form.projectTitle || form.paperTitle || form.topic || "Untitled Project";
@@ -140,10 +143,8 @@ const processFormForDisplay = async (form, formType, userBranchFromRequest, gfsB
     processedForm.status = form.status || "pending";
     processedForm.formType = formType;
 
-    // Base URL for retrieving files (assuming your backend serves them from here)
     const fileBaseUrl = fileBaseUrlMapper[formType] || "/api/uploads/files";
 
-    // Initialize all file-related fields to null or empty arrays
     processedForm.groupLeaderSignature = null;
     processedForm.studentSignature = null;
     processedForm.guideSignature = null;
@@ -161,36 +162,43 @@ const processFormForDisplay = async (form, formType, userBranchFromRequest, gfsB
     processedForm.guideNames = [];
     processedForm.employeeCodes = [];
 
-    // --- Specific file and field processing based on formType ---
+    const getFile = async (id) => {
+        return await getFileDetailsAndUrl(id, fileBaseUrl, formType, mongoose.connection);
+    };
+
+    const getMultipleFiles = async (ids) => {
+        const filePromises = ids.map(fileMeta => {
+            if (fileMeta?.id) return getFile(fileMeta.id);
+            if (typeof fileMeta === 'string') return getFile(fileMeta); // For some formTypes that store string IDs directly
+            return null;
+        });
+        return (await Promise.all(filePromises)).filter(Boolean);
+    };
+
     switch (formType) {
         case "UG_1":
             if (form.pdfFileIds && form.pdfFileIds.length > 0) {
-                const pdfFileDetailsPromises = form.pdfFileIds.map(id => getFileDetailsAndUrl(id, fileBaseUrl, gfsBucket));
-                processedForm.pdfFileUrls = (await Promise.all(pdfFileDetailsPromises)).filter(Boolean);
+                processedForm.pdfFileUrls = await getMultipleFiles(form.pdfFileIds);
             }
             if (form.groupLeaderSignatureId) {
-                processedForm.groupLeaderSignature = await getFileDetailsAndUrl(form.groupLeaderSignatureId, fileBaseUrl, gfsBucket);
+                processedForm.groupLeaderSignature = await getFile(form.groupLeaderSignatureId);
             }
             if (form.guideSignatureId) {
-                processedForm.guideSignature = await getFileDetailsAndUrl(form.guideSignatureId, fileBaseUrl, gfsBucket);
+                processedForm.guideSignature = await getFile(form.guideSignatureId);
             }
             processedForm.guideNames = form.guides ? form.guides.map(g => g.guideName || "") : [];
             processedForm.employeeCodes = form.guides ? form.guides.map(g => g.employeeCode || "") : [];
             break;
 
         case "UG_2":
-            // Note: Your UG_2 case uses form.groupLeaderSignature.fileId and form.guideSignature.fileId,
-            // implying these might already be objects in the raw form.
-            // Ensure this matches your UG_2 schema.
             if (form.groupLeaderSignature?.fileId) {
-                processedForm.groupLeaderSignature = await getFileDetailsAndUrl(form.groupLeaderSignature.fileId, fileBaseUrl, gfsBucket);
+                processedForm.groupLeaderSignature = await getFile(form.groupLeaderSignature.fileId);
             }
             if (form.guideSignature?.fileId) {
-                processedForm.guideSignature = await getFileDetailsAndUrl(form.guideSignature.fileId, fileBaseUrl, gfsBucket);
+                processedForm.guideSignature = await getFile(form.guideSignature.fileId);
             }
             if (form.uploadedFiles && form.uploadedFiles.length > 0) {
-                const uploadedFileDetailsPromises = form.uploadedFiles.map(fileMeta => getFileDetailsAndUrl(fileMeta.fileId, fileBaseUrl, gfsBucket));
-                processedForm.uploadedFiles = (await Promise.all(uploadedFileDetailsPromises)).filter(Boolean);
+                processedForm.uploadedFiles = await getMultipleFiles(form.uploadedFiles.map(f => f.fileId));
             }
             processedForm.projectDescription = form.projectDescription;
             processedForm.utility = form.utility;
@@ -204,31 +212,18 @@ const processFormForDisplay = async (form, formType, userBranchFromRequest, gfsB
             break;
 
         case "UG_3_A":
-            // Handle uploadedImage
             const uploadedImageId = getObjectIdString(form.uploadedImage?.fileId);
-            if (uploadedImageId) {
-                processedForm.uploadedImage = await getFileDetailsAndUrl(uploadedImageId, fileBaseUrl, gfsBucket);
-            }
+            if (uploadedImageId) processedForm.uploadedImage = await getFile(uploadedImageId);
 
-            // Handle uploadedPdfs
             if (form.uploadedPdfs && form.uploadedPdfs.length > 0) {
-                const pdfDetailsPromises = form.uploadedPdfs.map(pdfMeta => {
-                    const pdfFileId = getObjectIdString(pdfMeta.fileId);
-                    return pdfFileId ? getFileDetailsAndUrl(pdfFileId, fileBaseUrl, gfsBucket) : null;
-                });
-                processedForm.uploadedPdfs = (await Promise.all(pdfDetailsPromises)).filter(Boolean);
+                processedForm.uploadedPdfs = await getMultipleFiles(form.uploadedPdfs.map(f => f.fileId));
             }
 
-            console.log('Raw uploadedZipFile:', form.uploadedZipFile);
             const uploadedZipFileId = getObjectIdString(form.uploadedZipFile?.fileId || form.uploadedZipFile?.id);
-
             if (uploadedZipFileId) {
-                console.log(`📦 Processing uploadedZipFile with ID: ${uploadedZipFileId}`);
-                processedForm.zipFile = await getFileDetailsAndUrl(uploadedZipFileId, fileBaseUrl, gfsBucket);
-            } else {
-                console.warn('❌ No valid fileId found for uploadedZipFile.');
+                processedForm.zipFile = await getFile(uploadedZipFileId);
             }
-            // Remaining fields (no change needed here as they don't involve file IDs)
+
             processedForm.organizingInstitute = form.organizingInstitute;
             processedForm.projectTitle = form.projectTitle;
             processedForm.students = form.students;
@@ -239,35 +234,24 @@ const processFormForDisplay = async (form, formType, userBranchFromRequest, gfsB
 
         case "UG_3_B":
             if (form.pdfDocuments && form.pdfDocuments.length > 0) {
-                const pdfDetails = await Promise.all(form.pdfDocuments.map(fileMeta => {
-                    if (fileMeta?.id) return getFileDetailsAndUrl(fileMeta.id, fileBaseUrl, gfsBucket);
-                    return null; // Return null for invalid entries
-                }));
-                processedForm.pdfFileUrls = pdfDetails.filter(Boolean);
+                processedForm.pdfFileUrls = await getMultipleFiles(form.pdfDocuments);
             }
             if (form.zipFiles && form.zipFiles.length > 0) {
-                const zipDetails = await Promise.all(form.zipFiles.map(fileMeta => {
-                    if (fileMeta?.id) return getFileDetailsAndUrl(fileMeta.id, fileBaseUrl, gfsBucket);
-                    return null;
-                }));
-                processedForm.zipFile = zipDetails.filter(Boolean)[0] || null; // Assuming one zip
+                const zipFiles = await getMultipleFiles(form.zipFiles);
+                processedForm.zipFile = zipFiles[0] || null;
             }
             if (form.groupLeaderSignature?.id) {
-                processedForm.groupLeaderSignature = await getFileDetailsAndUrl(form.groupLeaderSignature.id, fileBaseUrl, gfsBucket);
-                processedForm.studentSignature = processedForm.groupLeaderSignature; // Assigning to studentSignature if same
+                processedForm.groupLeaderSignature = await getFile(form.groupLeaderSignature.id);
+                processedForm.studentSignature = processedForm.groupLeaderSignature;
             }
             if (form.guideSignature?.id) {
-                processedForm.guideSignature = await getFileDetailsAndUrl(form.guideSignature.id, fileBaseUrl, gfsBucket);
+                processedForm.guideSignature = await getFile(form.guideSignature.id);
             }
             if (form.paperCopy?.id) {
-                processedForm.paperCopy = await getFileDetailsAndUrl(form.paperCopy.id, fileBaseUrl, gfsBucket);
+                processedForm.paperCopy = await getFile(form.paperCopy.id);
             }
             if (form.additionalDocuments && form.additionalDocuments.length > 0) {
-                const additionalDocDetails = await Promise.all(form.additionalDocuments.map(fileMeta => {
-                    if (fileMeta?.id) return getFileDetailsAndUrl(fileMeta.id, fileBaseUrl, gfsBucket);
-                    return null;
-                }));
-                processedForm.additionalDocuments = additionalDocDetails.filter(Boolean);
+                processedForm.additionalDocuments = await getMultipleFiles(form.additionalDocuments);
             }
 
             processedForm.students = form.students || [];
@@ -283,12 +267,7 @@ const processFormForDisplay = async (form, formType, userBranchFromRequest, gfsB
 
         case "PG_1":
             processedForm.name = form.studentName || "N/A";
-            processedForm.topic =
-                form.sttpTitle ||
-                form.projectTitle ||
-                form.paperTitle ||
-                form.topic ||
-                "Untitled Project";
+            processedForm.topic = form.sttpTitle || form.projectTitle || form.paperTitle || form.topic || "Untitled Project";
 
             processedForm.department = form.department || "N/A";
             processedForm.guideName = form.guideName || "N/A";
@@ -303,32 +282,25 @@ const processFormForDisplay = async (form, formType, userBranchFromRequest, gfsB
             processedForm.registrationFee = form.registrationFee || "N/A";
 
             if (form.files) {
-                if (form.files.receiptCopy?.id) { // Use receiptCopy for student signature
-                    processedForm.studentSignature = await getFileDetailsAndUrl(form.files.receiptCopy.id, fileBaseUrl, gfsBucket);
+                if (form.files.receiptCopy?.id) {
+                    processedForm.studentSignature = await getFile(form.files.receiptCopy.id);
                 }
                 if (form.files.guideSignature?.id) {
-                    processedForm.guideSignature = await getFileDetailsAndUrl(form.files.guideSignature.id, fileBaseUrl, gfsBucket);
+                    processedForm.guideSignature = await getFile(form.files.guideSignature.id);
                 }
                 if (form.files.additionalDocuments && form.files.additionalDocuments.length > 0) {
-                    const additionalDocPromises = form.files.additionalDocuments.map(fileMeta => getFileDetailsAndUrl(fileMeta.id, fileBaseUrl, gfsBucket));
-                    processedForm.additionalDocuments = (await Promise.all(additionalDocPromises)).filter(Boolean);
-                } else {
-                    processedForm.additionalDocuments = [];
+                    processedForm.additionalDocuments = await getMultipleFiles(form.files.additionalDocuments);
                 }
                 if (form.files.pdfDocuments && form.files.pdfDocuments.length > 0) {
-                    const pdfDocPromises = form.files.pdfDocuments.map(fileMeta => getFileDetailsAndUrl(fileMeta.id, fileBaseUrl, gfsBucket));
-                    processedForm.pdfFileUrls = (await Promise.all(pdfDocPromises)).filter(Boolean);
-                } else {
-                    processedForm.pdfFileUrls = [];
+                    processedForm.pdfFileUrls = await getMultipleFiles(form.files.pdfDocuments);
                 }
                 if (form.files.zipFiles && form.files.zipFiles.length > 0) {
-                    const zipFilePromises = form.files.zipFiles.map(fileMeta => getFileDetailsAndUrl(fileMeta.id, fileBaseUrl, gfsBucket));
-                    processedForm.zipFile = (await Promise.all(zipFilePromises)).filter(Boolean)[0] || null;
-                } else {
-                    processedForm.zipFile = null;
+                    const zipFiles = await getMultipleFiles(form.files.zipFiles);
+                    processedForm.zipFile = zipFiles[0] || null;
                 }
             }
             break;
+
         case "PG_2_A":
             processedForm.topic = form.projectTitle || form.paperTitle || form.topic || "Untitled Project";
             processedForm.name = form.studentDetails?.[0]?.name || "N/A";
@@ -342,43 +314,37 @@ const processFormForDisplay = async (form, formType, userBranchFromRequest, gfsB
 
             if (form.files) {
                 if (form.files.bills && form.files.bills.length > 0) {
-                    const billFilePromises = form.files.bills.map(id => getFileDetailsAndUrl(id, fileBaseUrl, gfsBucket));
-                    processedForm.bills = (await Promise.all(billFilePromises)).filter(Boolean);
-                } else {
-                    processedForm.bills = [];
+                    processedForm.bills = await getMultipleFiles(form.files.bills);
                 }
                 if (form.files.zips && form.files.zips.length > 0) {
-                    const zipFilePromises = form.files.zips.map(id => getFileDetailsAndUrl(id, fileBaseUrl, gfsBucket));
-                    processedForm.zipFile = (await Promise.all(zipFilePromises)).filter(Boolean)[0] || null;
-                } else {
-                    processedForm.zipFile = null;
+                    const zipFiles = await getMultipleFiles(form.files.zips);
+                    processedForm.zipFile = zipFiles[0] || null;
                 }
                 if (form.files.studentSignature) {
-                    processedForm.studentSignature = await getFileDetailsAndUrl(form.files.studentSignature, fileBaseUrl, gfsBucket);
+                    processedForm.studentSignature = await getFile(form.files.studentSignature);
                 }
                 if (form.files.guideSignature) {
-                    processedForm.guideSignature = await getFileDetailsAndUrl(form.files.guideSignature, fileBaseUrl, gfsBucket);
+                    processedForm.guideSignature = await getFile(form.files.guideSignature);
                 }
                 if (form.files.groupLeaderSignature) {
-                    processedForm.groupLeaderSignature = await getFileDetailsAndUrl(form.files.groupLeaderSignature, fileBaseUrl, gfsBucket);
+                    processedForm.groupLeaderSignature = await getFile(form.files.groupLeaderSignature);
                 }
             }
             break;
 
         case "PG_2_B":
             if (form.paperCopy) {
-                processedForm.paperCopy = await getFileDetailsAndUrl(form.paperCopy, fileBaseUrl, gfsBucket);
+                processedForm.paperCopy = await getFile(form.paperCopy);
             }
             if (form.groupLeaderSignature) {
-                processedForm.groupLeaderSignature = await getFileDetailsAndUrl(form.groupLeaderSignature, fileBaseUrl, gfsBucket);
+                processedForm.groupLeaderSignature = await getFile(form.groupLeaderSignature);
                 processedForm.studentSignature = processedForm.groupLeaderSignature;
             }
             if (form.guideSignature) {
-                processedForm.guideSignature = await getFileDetailsAndUrl(form.guideSignature, fileBaseUrl, gfsBucket);
+                processedForm.guideSignature = await getFile(form.guideSignature);
             }
             if (form.additionalDocuments && form.additionalDocuments.length > 0) {
-                const additionalDocPromises = form.additionalDocuments.map(doc => getFileDetailsAndUrl(doc, fileBaseUrl, gfsBucket));
-                processedForm.additionalDocuments = (await Promise.all(additionalDocPromises)).filter(Boolean);
+                processedForm.additionalDocuments = await getMultipleFiles(form.additionalDocuments);
             }
 
             processedForm.name = form.studentName || "N/A";
@@ -401,30 +367,29 @@ const processFormForDisplay = async (form, formType, userBranchFromRequest, gfsB
             processedForm.claimDate = form.claimDate;
             processedForm.amountReceived = form.amountReceived;
             processedForm.amountSanctioned = form.amountSanctioned;
-
             break;
+
         case "R1":
             if (form.studentSignatureFileId) {
-                processedForm.studentSignature = await getFileDetailsAndUrl(form.studentSignatureFileId, fileBaseUrl, gfsBucket);
+                processedForm.studentSignature = await getFile(form.studentSignatureFileId);
             }
             if (form.guideSignatureFileId) {
-                processedForm.guideSignature = await getFileDetailsAndUrl(form.guideSignatureFileId, fileBaseUrl, gfsBucket);
+                processedForm.guideSignature = await getFile(form.guideSignatureFileId);
             }
             if (form.hodSignatureFileId) {
-                processedForm.hodSignature = await getFileDetailsAndUrl(form.hodSignatureFileId, fileBaseUrl, gfsBucket);
+                processedForm.hodSignature = await getFile(form.hodSignatureFileId);
             }
             if (form.sdcChairpersonSignatureFileId) {
-                processedForm.sdcChairpersonSignature = await getFileDetailsAndUrl(form.sdcChairpersonSignatureFileId, fileBaseUrl, gfsBucket);
+                processedForm.sdcChairpersonSignature = await getFile(form.sdcChairpersonSignatureFileId);
             }
             if (form.proofDocumentFileId) {
-                processedForm.proofDocument = await getFileDetailsAndUrl(form.proofDocumentFileId, fileBaseUrl, gfsBucket);
+                processedForm.proofDocument = await getFile(form.proofDocumentFileId);
             }
             if (form.pdfFileIds && form.pdfFileIds.length > 0) {
-                const pdfFileDetailsPromises = form.pdfFileIds.map(id => getFileDetailsAndUrl(id, fileBaseUrl, gfsBucket));
-                processedForm.pdfFileUrls = (await Promise.all(pdfFileDetailsPromises)).filter(Boolean);
+                processedForm.pdfFileUrls = await getMultipleFiles(form.pdfFileIds);
             }
             if (form.zipFileId) {
-                processedForm.zipFile = await getFileDetailsAndUrl(form.zipFileId, fileBaseUrl, gfsBucket);
+                processedForm.zipFile = await getFile(form.zipFileId);
             }
 
             processedForm.coGuideName = form.coGuideName;
@@ -452,12 +417,12 @@ const processFormForDisplay = async (form, formType, userBranchFromRequest, gfsB
             break;
 
         default:
-            console.warn(`No specific processing defined for form type: ${formType}. Returning raw form data with generic name/branch.`);
+            console.warn(`No specific processing defined for form type: ${formType}. Returning raw form data.`);
             break;
     }
+
     return processedForm;
 };
-
 // --- API Endpoints ---
 
 /**
@@ -853,27 +818,30 @@ router.put("/:id/status", async (req, res) => {
 
 // General file serving route for GridFS files
 router.get('/file/:fileId', async (req, res) => {
-    // Ensure gfsBucket is initialized globally in this file (which it is, from applicationRoutes.js)
-    if (!gfsBucket) { // Directly use the gfsBucket variable initialized in this module
-        return res.status(503).json({ message: "GridFS is not initialized or connected." });
-    }
     try {
-        const fileId = req.params.fileId;
+        const { fileId } = req.params;
+        const bucketName = req.query.bucket || 'uploads'; // Default to 'uploads' if bucket not specified
+
         if (!mongoose.Types.ObjectId.isValid(fileId)) {
             return res.status(400).json({ message: "Invalid file ID." });
         }
 
-        const files = await gfsBucket.find({ _id: new mongoose.Types.ObjectId(fileId) }).toArray();
+        const dynamicBucket = new mongoose.mongo.GridFSBucket(mongoose.connection.db, { bucketName });
+
+        console.log(`📦 Serving file from bucket: ${bucketName}`);
+
+        const files = await dynamicBucket.find({ _id: new mongoose.Types.ObjectId(fileId) }).toArray();
+
         if (!files || files.length === 0) {
-            return res.status(404).json({ message: "File not found." });
+            return res.status(404).json({ message: "File not found in the bucket." });
         }
 
         const file = files[0];
 
         res.set('Content-Type', file.contentType);
-        res.set('Content-Disposition', `inline; filename="${file.filename}"`); // 'inline' to display in browser, 'attachment' to download
+        res.set('Content-Disposition', `inline; filename="${file.filename}"`); // Inline to view, attachment to force download
 
-        const downloadStream = gfsBucket.openDownloadStream(file._id);
+        const downloadStream = dynamicBucket.openDownloadStream(file._id);
         downloadStream.pipe(res);
 
         downloadStream.on('error', (err) => {
@@ -886,5 +854,6 @@ router.get('/file/:fileId', async (req, res) => {
         res.status(500).json({ message: "Server error." });
     }
 });
+
 
 export default router;

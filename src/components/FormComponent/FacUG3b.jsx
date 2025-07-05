@@ -58,7 +58,7 @@ const FacUGForm3B = () => {
                       <td className="left-blue">{index + 1}</td>
                       <td>{app.studentDetails?.[0]?.rollNumber || "N/A"}</td>
                       <td>{new Date(app.createdAt).toLocaleDateString("en-GB")}</td>
-                      <td>{app.studentDetails?.[0]?.branch || "—"}</td>
+                      <td>{app.department || "—"}</td>
                     </tr>
                   ))}
                 </tbody>

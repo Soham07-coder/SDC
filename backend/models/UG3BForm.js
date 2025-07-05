@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 
 const fileInfoSchema = new mongoose.Schema({
+  id: { type: mongoose.Schema.Types.ObjectId, required: true }, // Add this field
   filename: String,
   originalname: String,
   mimetype: String,
@@ -19,6 +20,7 @@ const bankDetailsSchema = new mongoose.Schema({
 const UG3BFormSchema = new mongoose.Schema({
   svvNetId: { type: String, required: true },
   studentName: { type: String, required: true },
+  department: { type: String, required: true }, // ✅ Add this line
   yearOfAdmission: { type: String, required: true },
   feesPaid: { type: String, enum: ['Yes', 'No'], required: true },
   projectTitle: { type: String, required: true },
