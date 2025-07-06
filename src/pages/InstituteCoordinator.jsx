@@ -19,7 +19,6 @@ const InstCoordDash = () => {
 
         // Make a POST request to your backend endpoint
         const response = await axios.post("http://localhost:5000/api/facapplication/form/instCoordDashboard");
-        
         // Assuming the backend returns an array of applications directly
         setApplications(response.data);
       } catch (err) {
@@ -75,7 +74,14 @@ const InstCoordDash = () => {
                     <tr key={index}>
                       <td>{app.topic}</td>
                       <td>{getRollNumber(app)}</td>
-                      <td>{app.submitted}</td>
+                      <td>{new Date(app.submitted).toLocaleString('en-GB', {
+                                      day: '2-digit',
+                                      month: 'short',
+                                      year: 'numeric',
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                      hour12: true // Use AM/PM format
+                              })}</td>
                       <td className={`status ${app.status.toLowerCase()}`}>
                         {app.status}
                       </td>

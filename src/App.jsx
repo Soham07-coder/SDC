@@ -35,6 +35,7 @@ import FacPG2aForm from "./components/FormComponent/FacPG2a";
 import FacPG2bForm from "./components/FormComponent/FacPG2b";
 import FacR1Form from "./components/FormComponent/FacR1";
 import FormViewer from "./components/FormComponent/FormViewer";
+import AddUser from "./pages/AddUser";
 import FacultyFormViewer from "./components/FormComponent/FacultyFormViewer";
 
 import "./style.css";
@@ -69,6 +70,7 @@ const App = () => {
         <Route path="/principalHome" element={<PrincipalDash />} />
         <Route path="/insticoordHome" element={<InstCoordDash />} />
         <Route path="/AdHome" element={<AdminDashboard />} />
+        <Route path="/adduser" element={<AddUser />} />
         {/* <Route path="/fachome/ug1" element={<UG_1 />} />
         <Route path="/fachome/ug2" element={<UG_2 />} />
         <Route path="/fachome/ug3a" element={<UG_3_A />} />

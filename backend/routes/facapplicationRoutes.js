@@ -478,18 +478,22 @@ router.get("/stats", async (req, res) => {
 });
 
 router.patch("/:id/update-status", async (req, res) => {
-  const { id } = req.params; // Get the application ID from the URL parameter
-  const { status, remarks } = req.body; // Get status and remarks from the request body
+  const { id } = req.params;
+  let { status, remarks } = req.body;
+
+  // Trim inputs to avoid trailing spaces
+  status = status?.trim()?.toLowerCase();
+  remarks = remarks?.trim();
 
   // Basic input validation
   if (!id || !status || !remarks) {
     return res.status(400).json({ message: "Application ID, status, and remarks are required." });
   }
-  if (!['approved', 'rejected', 'pending'].includes(status.toLowerCase())) {
-    return res.status(400).json({ message: "Invalid status provided." });
+
+  if (!['approved', 'rejected', 'pending'].includes(status)) {
+    return res.status(400).json({ message: "Invalid status provided. Use: approved, rejected, pending." });
   }
 
-  // Define an array of all your form models
   const allFormModels = [
     UG1Form, UGForm2, UG3AForm, UG3BForm,
     PG1Form, PG2AForm, PG2BForm, R1Form
@@ -498,34 +502,29 @@ router.patch("/:id/update-status", async (req, res) => {
   try {
     let updatedForm = null;
 
-    // Iterate through all models to find and update the form
     for (const Model of allFormModels) {
-      // Find the document by its _id and update its status and remarks
-      // { new: true } returns the updated document
       updatedForm = await Model.findByIdAndUpdate(
         id,
-        { status: status, remarks: remarks },
+        { status, remarks },
         { new: true }
       );
 
-      // If a form was found and updated in the current model, break the loop
-      if (updatedForm) {
-        break;
-      }
+      if (updatedForm) break;
     }
 
     if (!updatedForm) {
+      console.log(`❌ Application with ID ${id} not found in any collection.`);
       return res.status(404).json({ message: "Application not found in any collection." });
     }
 
-    console.log(`Application ${id} status updated to ${status} with remarks: "${remarks}"`);
+    console.log(`✅ Application ${id} updated to status: ${status} with remarks: "${remarks}"`);
 
     res.status(200).json({
-      message: "Application status updated successfully",
-      updatedApplication: processFormForDisplay(updatedForm, updatedForm.formType), // Process and send back
+      message: "Application status updated successfully.",
+      updatedApplication: processFormForDisplay(updatedForm, updatedForm.formType)
     });
   } catch (error) {
-    console.error("Error updating application status:", error);
+    console.error("❌ Server error during status update:", error);
     res.status(500).json({ message: "Server error during status update." });
   }
 });
@@ -1044,6 +1043,49 @@ router.post("/form/hodDashboard", async (req, res) => { // Changed to POST reque
   } catch (error) {
     console.error("❌ Error in /form/instCoordDashboard:", error);
     return res.status(500).json({ message: "Server error while fetching applications for Institute Coordinator" });
+  }
+});
+
+router.get("/all-applications", async (req, res) => {
+  try {
+    // Fetch all forms from each collection
+    const [
+      ug1Forms,
+      ug2Forms,
+      ug3aForms,
+      ug3bForms,
+      pg1Forms,
+      pg2aForms,
+      pg2bForms,
+      r1Forms,
+    ] = await Promise.all([
+      UG1Form.find().sort({ createdAt: -1 }).lean(),
+      UGForm2.find().sort({ createdAt: -1 }).lean(),
+      UG3AForm.find().sort({ createdAt: -1 }).lean(),
+      UG3BForm.find().sort({ createdAt: -1 }).lean(),
+      PG1Form.find().sort({ createdAt: -1 }).lean(),
+      PG2AForm.find().sort({ createdAt: -1 }).lean(),
+      PG2BForm.find().sort({ createdAt: -1 }).lean(),
+      R1Form.find().sort({ createdAt: -1 }).lean(),
+    ]);
+
+    // Process all forms using your processor
+    const processedApplications = await Promise.all([
+      ...ug1Forms.map(f => processFormForDisplay(f, "UG_1")),
+      ...ug2Forms.map(f => processFormForDisplay(f, "UG_2")),
+      ...ug3aForms.map(f => processFormForDisplay(f, "UG_3_A")),
+      ...ug3bForms.map(f => processFormForDisplay(f, "UG_3_B")),
+      ...pg1Forms.map(f => processFormForDisplay(f, "PG_1")),
+      ...pg2aForms.map(f => processFormForDisplay(f, "PG_2_A")),
+      ...pg2bForms.map(f => processFormForDisplay(f, "PG_2_B")),
+      ...r1Forms.map(f => processFormForDisplay(f, "R1")),
+    ]);
+
+    console.log("✅ Total Applications fetched for Admin Dashboard:", processedApplications.length);
+    return res.json(processedApplications);
+  } catch (error) {
+    console.error("❌ Error in /all-applications:", error);
+    return res.status(500).json({ message: "Server error while fetching applications for Admin Dashboard" });
   }
 });
 

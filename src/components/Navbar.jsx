@@ -54,7 +54,11 @@ const Navbar = () => {
 
       <div className="navbar-center">
         <Link to={homeLink} className="nav-link">Home</Link>
-        <Link to="/dashboard" className="nav-link">Dashboard</Link>
+        {userRole === "admin" ? ( // <--- This is the relevant line
+          <Link to="/adduser" className="nav-link">Add User</Link>
+        ) : (
+          <Link to="/dashboard" className="nav-link">Dashboard</Link>
+        )}
         <Link to="/policy" className="nav-link">Policy</Link>
         <button className="nav-link logout-btn" onClick={handleLogout}>Logout</button>
       </div>

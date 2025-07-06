@@ -105,7 +105,14 @@ const HodDashboard = () => {
                       <tr key={index}>
                         <td>{app.topic || 'N/A'}</td> {/* Add fallback for display */}
                         <td>{getRollNumber(app)}</td>
-                        <td>{app.submitted || 'N/A'}</td>
+                        <td>{new Date(app.submitted).toLocaleString('en-GB', {
+                                      day: '2-digit',
+                                      month: 'short',
+                                      year: 'numeric',
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                      hour12: true // Use AM/PM format
+                              })}</td>
                         {/* Ensure app.status is a string for className, or provide fallback */}
                         <td className={`status ${app.status ? app.status.toLowerCase() : ''}`}>
                           {app.status || 'N/A'}

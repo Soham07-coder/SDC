@@ -1,0 +1,102 @@
+
+/* === AddUser Page Styling === */
+
+.add-user-page {
+  max-width: 900px;
+  margin: 2rem auto;
+  background-color: #fff;
+  padding: 2rem 2.5rem;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  font-family: 'Segoe UI', sans-serif;
+}
+
+.add-user-page h2 {
+  font-size: 1.8rem;
+  color: #c40000;
+  margin-bottom: 1.5rem;
+  text-align: center;
+}
+
+.add-user-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: center;
+  margin-bottom: 2rem;
+}
+
+.add-user-form input[type="email"],
+.add-user-form select {
+  padding: 0.65rem 1rem;
+  font-size: 1rem;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  min-width: 250px;
+  transition: border 0.2s ease;
+}
+
+.add-user-form input:focus,
+.add-user-form select:focus {
+  border-color: #c40000;
+  outline: none;
+}
+
+.add-user-form button {
+  background-color: #c40000;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 0.65rem 1.5rem;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.3s ease;
+}
+
+.add-user-form button:hover {
+  background-color: #a00000;
+}
+
+/* === User Table === */
+
+.add-user-page h3 {
+  font-size: 1.4rem;
+  margin-bottom: 1rem;
+  color: #333;
+}
+
+
+/* === Responsive === */
+@media (max-width: 600px) {
+  .add-user-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .add-user-form input,
+  .add-user-form select,
+  .add-user-form button {
+    width: 100%;
+  }
+
+  td button {
+    margin-bottom: 0.3rem;
+  }
+}
+
+.layout-container {
+  display: flex;
+  min-height: 100vh;
+  background-color: #f9f9f9;
+}
+
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.add-user-page {
+  padding: 2rem;
+  flex: 1;
+}

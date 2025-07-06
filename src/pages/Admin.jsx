@@ -1,41 +1,50 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import axios from "axios";
 import Navbar from "../components/Navbar";
 import Sidebar from "../components/Sidebar";
 import "../style.css";
 
 const AdminDashboard = () => {
   const [applications, setApplications] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const navigate = useNavigate();
 
   useEffect(() => {
-    loadApplications();
+    fetchApplications();
   }, []);
 
-  const loadApplications = () => {
-    const pending = JSON.parse(localStorage.getItem("pendingApps")) || [];
-    const approved = JSON.parse(localStorage.getItem("approveApps")) || [];
-    const rejected = JSON.parse(localStorage.getItem("rejectedApps")) || [];
-
-    const withStatus = (data, status) =>
-      data.map((app) => ({
-        ...app,
-        status,
-      }));
-
-    const allApps = [
-      ...withStatus(pending, "Pending"),
-      ...withStatus(approved, "Approved"),
-      ...withStatus(rejected, "Rejected"),
-    ];
-
-    setApplications(allApps);
+  const fetchApplications = async () => {
+    try {
+      const response = await axios.get("http://localhost:5000/api/facapplication/all-applications");
+      setApplications(response.data);
+    } catch (err) {
+      console.error("Error fetching applications:", err);
+      setError(err.response?.data?.message || "Failed to fetch applications.");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleEdit = (app) => {
-    const newStatus = window.prompt("Enter new status: Approved / Rejected", app.status);
-    if (!newStatus || !["Approved", "Rejected"].includes(newStatus)) {
-      alert("Invalid status. Use 'Approved' or 'Rejected'.");
+  const getRollNumber = (app) => {
+    return (
+      app.rollNumber ||
+      app.rollNo ||
+      app.students?.[0]?.rollNo ||
+      app.studentDetails?.[0]?.rollNumber ||
+      "N/A"
+    );
+  };
+
+  const handleViewClick = (id) => {
+    navigate(`/application/${id}`); // Navigate to a specific application's detail page
+  };
+
+  const handleEdit = async (app) => {
+    const newStatus = window.prompt("Enter new status: Approved / Rejected / Pending", app.status);
+    if (!newStatus || !["Approved", "Rejected", "Pending"].includes(newStatus)) {
+      alert("Invalid status. Use 'Approved', 'Rejected', or 'Pending'.");
       return;
     }
 
@@ -45,20 +54,18 @@ const AdminDashboard = () => {
       return;
     }
 
-    // Remove from all buckets
-    ["pendingApps", "approveApps", "rejectedApps"].forEach((key) => {
-      const data = JSON.parse(localStorage.getItem(key)) || [];
-      const updated = data.filter((a) => a.id !== app.id);
-      localStorage.setItem(key, JSON.stringify(updated));
-    });
+    try {
+      await axios.patch(`http://localhost:5000/api/facapplication/${app._id}/update-status`, {
+        status: newStatus.toLowerCase(),
+        remarks: newRemarks,
+      });
 
-    // Save into new bucket
-    const targetKey = newStatus === "Approved" ? "approveApps" : "rejectedApps";
-    const updatedApp = { ...app, remarks: newRemarks };
-    const newList = JSON.parse(localStorage.getItem(targetKey)) || [];
-    localStorage.setItem(targetKey, JSON.stringify([...newList, updatedApp]));
-
-    loadApplications(); // reload local state
+      alert("Application status updated successfully!");
+      fetchApplications(); // Reload applications
+    } catch (err) {
+      console.error("Error updating application:", err);
+      alert(err.response?.data?.message || "Failed to update application.");
+    }
   };
 
   return (
@@ -76,53 +83,59 @@ const AdminDashboard = () => {
             </div>
 
             <h2 className="dashboard-title">Recents</h2>
-            <table className="app-table">
-              <thead>
-                <tr>
-                  <th>Form</th>
-                  <th>Applicant’s Roll No.</th>
-                  <th>Application Date</th>
-                  <th>Status</th>
-                  <th>Action</th>
-                  <th>Edit</th>
-                </tr>
-              </thead>
-              <tbody>
-                {applications.length > 0 ? (
-                  applications.map((app, index) => (
+
+            {loading ? (
+              <p>Loading applications...</p>
+            ) : error ? (
+              <p className="error-message">{error}</p>
+            ) : applications.length === 0 ? (
+              <p>No Applications Found</p>
+            ) : (
+              <table className="app-table">
+                <thead>
+                  <tr>
+                    <th>Form</th>
+                    <th>Applicant’s Roll No.</th>
+                    <th>Application Date</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                    <th>Edit</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {applications.map((app, index) => (
                     <tr key={index}>
-                      <td>{app.topic}</td>
-                      <td>{app.id}</td>
-                      <td>{app.submitted}</td>
+                      <td>{app.formType || "Unknown Form"}</td>
+                      <td>{getRollNumber(app)}</td>
+                      <td>{new Date(app.submitted).toLocaleString('en-GB', {
+                                      day: '2-digit',
+                                      month: 'short',
+                                      year: 'numeric',
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                      hour12: true // Use AM/PM format
+                              })}</td>
                       <td className={`status ${app.status.toLowerCase()}`}>
                         {app.status}
                       </td>
                       <td>
                         <button
                           className="view-btn"
-                          onClick={() =>
-                            navigate(`/facHome/${app.path || app.formId?.toLowerCase?.() || ""}`)
-                          }
+                          onClick={() => handleViewClick(app._id)}// Make sure your form route expects this
                         >
                           View Form
                         </button>
                       </td>
                       <td>
-                        {(app.status === "Approved" || app.status === "Rejected") && (
-                          <button className="edit-btn" onClick={() => handleEdit(app)}>
-                            Edit
-                          </button>
-                        )}
+                        <button className="edit-btn" onClick={() => handleEdit(app)}>
+                          Edit
+                        </button>
                       </td>
                     </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan="6">No Applications Found</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </main>
         </div>
       </div>
