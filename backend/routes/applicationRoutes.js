@@ -121,11 +121,13 @@ const processFormForDisplay = async (form, formType, userBranchFromRequest,gfsBu
     let processedForm = { ...form };
 
     const ACCESS_LEVELS = {
+        STUDENT: 'student',
         VALIDATOR: 'validator',
         ADMIN: 'admin',
         PRINCIPAL: 'principal',
         HOD: 'hod',
-        INSTITUTE_COORDINATOR: 'coordinator'
+        INSTITUTE_COORDINATOR: 'institute coordinator',
+        DEPARTMENT_COORDINATOR: 'department coordinator' // <-- ADD THIS
     };
 
     const isStudent = (userRole || "").toLowerCase() === "student";
@@ -734,14 +736,17 @@ router.post("/:id", async (req, res) => {
             ADMIN: 'admin',
             PRINCIPAL: 'principal',
             HOD: 'hod',
-            INSTITUTE_COORDINATOR: 'coordinator' // Assuming 'coordinator' maps to 'institute coordinator'
+            INSTITUTE_COORDINATOR: 'institute coordinator',
+            DEPARTMENT_COORDINATOR: 'department coordinator' // <-- ADD THIS
         };
-
         // Admin, Validator, and PRINCIPAL now have global view access
         const ROLES_WITH_GLOBAL_VIEW_ACCESS = [
             ACCESS_LEVELS.VALIDATOR,
             ACCESS_LEVELS.ADMIN,
-            ACCESS_LEVELS.PRINCIPAL // Principal moved back here for global view access
+            ACCESS_LEVELS.PRINCIPAL,
+            ACCESS_LEVELS.INSTITUTE_COORDINATOR,   // ✅ Ensure included
+            ACCESS_LEVELS.HOD,                     // ✅ Ensure included
+            ACCESS_LEVELS.DEPARTMENT_COORDINATOR   // ✅ Add this for global view access
         ];
 
         // No roles will have branch-specific view access for this route anymore,
@@ -765,12 +770,16 @@ router.post("/:id", async (req, res) => {
         }
 
         // --- Refined Authorization Logic ---
-        if (ROLES_WITH_GLOBAL_VIEW_ACCESS.includes(userRole)) {
-            // Admin, Validator, and Principal can view any application by ID. No additional filter needed.
-            console.log(`Access granted (Global View): User role '${userRole}' allows viewing any application by ID. Filter:`, findFilter);
+        if (
+            ROLES_WITH_GLOBAL_VIEW_ACCESS.includes(userRole) ||
+            userRole === ACCESS_LEVELS.INSTITUTE_COORDINATOR || // institute coordinator = department coordinator
+            userRole === ACCESS_LEVELS.HOD
+        ) {
+            // Grant department coordinator and HOD global view access (view-only)
+            console.log(`Access granted (View Only): Role '${userRole}' can view any application. Filter:`, findFilter);
+            // No need to append svvNetId
         } else {
-            // Default: Any other role (including HOD, Institute Coordinator, and Student)
-            // can only view applications that match their svvNetId.
+            // Restrict to only their own applications
             findFilter.svvNetId = svvNetId;
             console.log(`Access restricted (User-Specific View): User role '${userRole}' requires svvNetId match. Filter:`, findFilter);
         }

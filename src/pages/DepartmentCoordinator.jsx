@@ -34,12 +34,8 @@ const DeptCoordDashboard = () => {
   };
 
   // View form handler
-  const handleViewForm = (formType, formId) => {
-    if (formType && formId) {
-      navigate(`/facHome/${formType}/${formId}`);
-    } else {
-      console.warn("Form ID or Form Type is missing.");
-    }
+  const handleViewClick = (id) => {
+    navigate(`/application/${id}`); // Navigate to a specific application's detail page
   };
 
   return (
@@ -80,7 +76,7 @@ const DeptCoordDashboard = () => {
                       <td>
                         <button
                           className="view-btn"
-                          onClick={() => handleViewForm(app.formType, app.formId)}
+                           onClick={() => handleViewClick(app._id)}
                         >
                           View Form
                         </button>
