@@ -29,9 +29,9 @@ const Login = () => {
 
   const VALIDATOR_EMAILS = ["devanshu.de@somaiya.edu", "smitasankhe@somaiya.edu", "vaibhav.vasani@somaiya.edu", "swapnil.cp@somaiya.edu"];
   const DEPT_COORDINATORS = ["swapnil.cp@somaiya.edu", "devanshu.de@somaiya.edu"];
-  const INSTI_COORDINATORS = ["smitasankhe@somaiya.edu", "devanshu.des@somaiya.edu"];
+  const INSTI_COORDINATORS = ["smitasankhe@somaiya.edu"];
   const HOD_EMAILS = ["devanshu.dev@somaiya.edu"];
-  const PRINCIPAL_EMAILS = ["principal.kjsce@somaiya.edu", "devanshu.desa@somaiya.edu"];
+  const PRINCIPAL_EMAILS = ["principal.kjsce@somaiya.edu", "soham.gore@somaiya.edu"];
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -127,7 +127,7 @@ const Login = () => {
       if (role === "Validator") {
         let matchedRoles = [];
 
-        if (decoded.email === "sdc-kjsce@somaiya.edu" || decoded.email === "soham.gore@somaiya.edu") {
+        if (decoded.email === "sdc-kjsce@somaiya.edu" || decoded.email === "devanshu.des@somaiya.edu") {
           matchedRoles = ["Admin"];
         } else {
           if (VALIDATOR_EMAILS.includes(decoded.email)) matchedRoles.push("Validator");

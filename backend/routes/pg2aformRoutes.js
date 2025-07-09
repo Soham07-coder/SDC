@@ -167,4 +167,39 @@ router.put('/:formId/review', async (req, res) => {
   }
 });
 
+// File Fetch Route
+router.get('/file/:fileId', async (req, res) => {
+  try {
+    const fileId = req.params.fileId;
+
+    if (!gfsBucket) {
+      return res.status(500).json({ message: "GridFSBucket not initialized." });
+    }
+
+    const _id = new mongoose.Types.ObjectId(fileId);
+
+    const files = await gfsBucket.find({ _id }).toArray();
+    if (!files || files.length === 0) {
+      return res.status(404).json({ message: "File not found." });
+    }
+
+    const file = files[0];
+    res.set('Content-Type', file.contentType || 'application/octet-stream');
+    res.set('Content-Disposition', `inline; filename="${file.filename}"`);
+
+    const stream = gfsBucket.openDownloadStream(_id);
+    stream.pipe(res);
+
+    stream.on('error', (err) => {
+      console.error('Error streaming file:', err);
+      res.status(500).json({ message: 'Error streaming file.' });
+    });
+
+  } catch (err) {
+    console.error("Error fetching file from PG2A bucket:", err);
+    res.status(500).json({ message: 'Server error fetching file.' });
+  }
+});
+
+
 export default router;

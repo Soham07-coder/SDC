@@ -947,7 +947,7 @@ router.post("/form/deptCoordDashboard", async (req, res) => {
       ...r1Forms.map((f) => processFormForDisplay(f, "R1")),
     ]);
 
-    console.log("✅ Total Applications fetched:", results.length);
+    console.log("✅ Total Applications fetched for Department Coordinator:", results.length);
     return res.json(results);
 
   } catch (error) {
@@ -1037,12 +1037,62 @@ router.post("/form/hodDashboard", async (req, res) => { // Changed to POST reque
       ...r1Forms.map((f) => processFormForDisplay(f, "R1")),
     ]);
 
-    console.log("✅ Total Applications fetched for Institute Coordinator:", results.length);
+    console.log("✅ Total Applications fetched for HOD", results.length);
     return res.json(results);
 
   } catch (error) {
-    console.error("❌ Error in /form/instCoordDashboard:", error);
-    return res.status(500).json({ message: "Server error while fetching applications for Institute Coordinator" });
+    console.error("❌ Error in /form/hodDashboard", error);
+    return res.status(500).json({ message: "Server error while fetching applications for HOD" });
+  }
+});
+
+router.get("/principal/applications", async (req, res) => { // Changed to GET request as per frontend
+  try {
+    // You can optionally add authorization here based on req.headers.
+    // For example, verify if the user (from headers) has a 'Principal' role.
+    // const svvNetId = req.headers['x-user-svvnetid'];
+    // const department = req.headers['x-user-department'];
+    // console.log(`Fetching applications for Principal: ${svvNetId}, Department: ${department}`);
+
+    // Fetch all forms from each collection
+    const [
+      ug1Forms,
+      ug2Forms,
+      ug3aForms,
+      ug3bForms,
+      pg1Forms,
+      pg2aForms,
+      pg2bForms,
+      r1Forms,
+    ] = await Promise.all([
+      UG1Form.find().sort({ createdAt: -1 }).lean(),
+      UGForm2.find().sort({ createdAt: -1 }).lean(),
+      UG3AForm.find().sort({ createdAt: -1 }).lean(),
+      UG3BForm.find().sort({ createdAt: -1 }).lean(),
+      PG1Form.find().sort({ createdAt: -1 }).lean(),
+      PG2AForm.find().sort({ createdAt: -1 }).lean(),
+      PG2BForm.find().sort({ createdAt: -1 }).lean(),
+      R1Form.find().sort({ createdAt: -1 }).lean(),
+    ]);
+
+    // Process forms for display, ensuring a consistent structure for the frontend
+    const results = await Promise.all([
+      ...ug1Forms.map((f) => processFormForDisplay(f, "UG_1")),
+      ...ug2Forms.map((f) => processFormForDisplay(f, "UG_2")),
+      ...ug3aForms.map((f) => processFormForDisplay(f, "UG_3_A")),
+      ...ug3bForms.map((f) => processFormForDisplay(f, "UG_3_B")),
+      ...pg1Forms.map((f) => processFormForDisplay(f, "PG_1")),
+      ...pg2aForms.map((f) => processFormForDisplay(f, "PG_2_A")),
+      ...pg2bForms.map((f) => processFormForDisplay(f, "PG_2_B")),
+      ...r1Forms.map((f) => processFormForDisplay(f, "R1")),
+    ]);
+
+    console.log("✅ Total Applications fetched for Principal:", results.length);
+    return res.json(results); // Send the combined and processed results
+
+  } catch (error) {
+    console.error("❌ Error in /principal/applications:", error);
+    return res.status(500).json({ message: "Server error while fetching applications for Principal" });
   }
 });
 

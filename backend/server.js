@@ -3,6 +3,20 @@ import express from "express";
 import mongoose from "mongoose";
 import cors from "cors";
 import cookieParser from "cookie-parser"; // Import cookieParser
+// ✅ Route Imports - Ensure these files exist in your ./routes/ directory
+import authRoutes from "./routes/authRoutes.js";
+import userRoutes from './routes/userRoutes.js';
+import ug1FormRoutes from "./routes/ug1FormRoutes.js";
+import ug2FormRoutes from "./routes/UGForm2Route.js"; // Note: Filename mismatch UGForm2Route.js vs ug2FormRoutes.js
+import ug3aFormRoutes from "./routes/ug3aFormRoutes.js";
+import ug3bFormRoutes from "./routes/ug3bFormRoutes.js";
+import pg1formRoutes from "./routes/pg1formRoutes.js";
+import pg2aFormRoutes from "./routes/pg2aformRoutes.js";
+import pg2bFormRoutes from "./routes/pg2bformRoutes.js";
+import r1FormRoutes from './routes/r1formRoutes.js';
+import applicationRoutes from "./routes/applicationRoutes.js";
+import facapplicationRoutes from "./routes/facapplicationRoutes.js";
+
 
 dotenv.config(); // Load environment variables
 
@@ -13,7 +27,13 @@ app.use(
   cors({
     origin: 'http://localhost:5173', // Your frontend's origin
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], // Explicitly allow PATCH
-    allowedHeaders: ['Content-Type', 'Authorization'], // Important for custom headers like Authorization
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization', // Important for custom headers like Authorization
+      'X-User-SvvNetId',   // <--- ADD THIS CUSTOM HEADER
+      'X-User-Department', // <--- ADD THIS CUSTOM HEADER
+      'X-User-Role'        // <--- ADD THIS CUSTOM HEADER
+    ],
     credentials: true, // Needed for cookies/auth headers
   })
 );
@@ -36,19 +56,6 @@ mongoose
     process.exit(1); // Exit if DB connection fails
   });
 
-// ✅ Route Imports - Ensure these files exist in your ./routes/ directory
-import authRoutes from "./routes/authRoutes.js";
-import userRoutes from './routes/userRoutes.js';
-import ug1FormRoutes from "./routes/ug1FormRoutes.js";
-import ug2FormRoutes from "./routes/UGForm2Route.js"; // Note: Filename mismatch UGForm2Route.js vs ug2FormRoutes.js
-import ug3aFormRoutes from "./routes/ug3aFormRoutes.js";
-import ug3bFormRoutes from "./routes/ug3bFormRoutes.js";
-import pg1formRoutes from "./routes/pg1formRoutes.js";
-import pg2aFormRoutes from "./routes/pg2aformRoutes.js";
-import pg2bFormRoutes from "./routes/pg2bformRoutes.js";
-import r1FormRoutes from './routes/r1formRoutes.js';
-import applicationRoutes from "./routes/applicationRoutes.js";
-import facapplicationRoutes from "./routes/facapplicationRoutes.js";
 
 
 // 🔹 Routes

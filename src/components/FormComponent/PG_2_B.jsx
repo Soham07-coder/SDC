@@ -1,6 +1,69 @@
 import React, { useState , useEffect, useRef} from 'react';
 import axios from 'axios';
 
+const FilePreview = ({ fileList, fieldName, onRemove }) => {
+  const isUploadedFile = (file) => file && (file.url || file.id || file.fileId || file._id);
+
+  const getDisplayUrl = (file) => {
+    const fileId = file?.id || file?.fileId || file?._id;
+    return fileId ? `/api/pg2bform/file/${fileId}` : null;
+  };
+
+  const getFileName = (file) =>
+    file?.originalName || file?.name || file?.filename || file?.file?.name || "Unnamed File";
+
+  const getFileSize = (file) => {
+    const sizeInBytes = file?.file?.size || file?.size;
+    return sizeInBytes ? `${(sizeInBytes / (1024 * 1024)).toFixed(2)} MB` : "N/A";
+  };
+
+  const normalizedList = Array.isArray(fileList) ? fileList : [fileList].filter(Boolean);
+
+  if (normalizedList.length === 0) {
+    return <p className="text-gray-500 text-sm italic mt-1">No file selected.</p>;
+  }
+
+  return (
+    <ul className="mt-2 list-disc list-inside space-y-1">
+      {normalizedList.map((file, index) => {
+        const displayUrl = getDisplayUrl(file);
+        const fileName = getFileName(file);
+        const fileSize = getFileSize(file);
+        const linkText = displayUrl ? `View ${fileName}` : `${fileName} (${fileSize})`;
+
+        return (
+          <li
+            key={file.id || file.fileId || file._id || index}
+            className="flex items-center justify-between text-sm text-gray-700 p-1 border rounded bg-gray-50 mb-1"
+          >
+            {displayUrl ? (
+              <a
+                href={displayUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:underline flex-grow"
+              >
+                {linkText}
+              </a>
+            ) : (
+              <span className="flex-grow">{linkText}</span>
+            )}
+
+            {onRemove && (
+              <button
+                type="button"
+                className="ml-4 text-red-600 hover:underline"
+                onClick={() => onRemove(fieldName, index)}
+              >
+                Remove
+              </button>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+};
 const PG_2_B = ({ viewOnly = false, data = {} }) => {
   const [formData, setFormData] = useState({
     studentName: '',
@@ -733,48 +796,47 @@ const PG_2_B = ({ viewOnly = false, data = {} }) => {
 
         <p className="mb-6 text-gray-700">The participation by the student was relevant to their Final Year project and affiliation to the institute was clearly mentioned.</p>
 
-        {/* File Uploads / Previews Section */}
-        {(!viewOnly || !isStudent) && ( // Show section if not viewOnly OR if viewOnly but not a student
+        {(!viewOnly || !isStudent) && (
           <div className="mb-6 space-y-4">
             {/* Paper Copy Upload / Preview */}
             <div>
               <label className="block font-semibold mb-2">*Attach proof documents:</label>
-              {viewOnly && files.paperCopy && files.paperCopy.id ? ( // Check for file.id for preview
-                <div>
-                  <a href={`http://localhost:5000/api/pg2bform/file/${files.paperCopy.id}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                    View Paper Copy ({files.paperCopy.filename})
-                  </a>
-                </div>
-              ) : (
+              {!viewOnly ? (
                 <div className="flex items-center">
                   <label className="bg-blue-500 text-white px-4 py-2 rounded cursor-pointer hover:bg-blue-600">
                     Choose Paper Copy
                     <input
                       type="file"
                       className="hidden"
-                      onChange={(e) => handleFileChange('paperCopy', e)}
+                      onChange={(e) => handleFileChange("paperCopy", e)}
                       ref={paperCopyRef}
                     />
                   </label>
                   <span className="ml-2 text-sm">
-                    {files.paperCopy ? (files.paperCopy instanceof File ? files.paperCopy.name : files.paperCopy.filename) : "No file chosen"}
+                    {files.paperCopy
+                      ? files.paperCopy instanceof File
+                        ? files.paperCopy.name
+                        : files.paperCopy.filename
+                      : "No file chosen"}
                   </span>
                 </div>
+              ) : (
+                <FilePreview
+                  fileList={files.paperCopy}
+                  fieldName="paperCopy"
+                  viewOnly={viewOnly}
+                  isStudent={isStudent}
+                />
               )}
               {errors.paperCopy && <p className="text-red-500 text-xs mt-1">{errors.paperCopy}</p>}
             </div>
 
             {/* Signatures Upload / Preview */}
             <div className="grid grid-cols-2 gap-4">
+              {/* Student Signature */}
               <div>
                 <label className="block font-semibold mb-2">Signature of Student (JPEG Only)</label>
-                {viewOnly && files.groupLeaderSignature && files.groupLeaderSignature.id ? ( // Check for file.id for preview
-                  <div>
-                    <a href={`http://localhost:5000/api/pg2bform/file/${files.groupLeaderSignature.id}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                      View Student Signature ({files.groupLeaderSignature.filename})
-                    </a>
-                  </div>
-                ) : (
+                {!viewOnly ? (
                   <div className="flex items-center">
                     <label className="bg-blue-500 text-white px-4 py-2 rounded cursor-pointer hover:bg-blue-600">
                       Choose File
@@ -782,27 +844,35 @@ const PG_2_B = ({ viewOnly = false, data = {} }) => {
                         type="file"
                         className="hidden"
                         accept="image/jpeg"
-                        onChange={(e) => handleFileChange('groupLeaderSignature', e)}
+                        onChange={(e) => handleFileChange("groupLeaderSignature", e)}
                         ref={groupLeaderSignatureRef}
                       />
                     </label>
                     <span className="ml-2 text-sm">
-                      {files.groupLeaderSignature ? (files.groupLeaderSignature instanceof File ? files.groupLeaderSignature.name : files.groupLeaderSignature.filename) : "No file chosen"}
+                      {files.groupLeaderSignature
+                        ? files.groupLeaderSignature instanceof File
+                          ? files.groupLeaderSignature.name
+                          : files.groupLeaderSignature.filename
+                        : "No file chosen"}
                     </span>
                   </div>
+                ) : (
+                  <FilePreview
+                    fileList={files.groupLeaderSignature}
+                    fieldName="groupLeaderSignature"
+                    viewOnly={viewOnly}
+                    isStudent={isStudent}
+                  />
                 )}
-                {errors.groupLeaderSignature && <p className="text-red-500 text-xs mt-1">{errors.groupLeaderSignature}</p>}
+                {errors.groupLeaderSignature && (
+                  <p className="text-red-500 text-xs mt-1">{errors.groupLeaderSignature}</p>
+                )}
               </div>
 
+              {/* Guide Signature */}
               <div>
                 <label className="block font-semibold mb-2">Signature of Guide (JPEG Only)</label>
-                {viewOnly && files.guideSignature && files.guideSignature.id ? ( // Check for file.id for preview
-                  <div>
-                    <a href={`http://localhost:5000/api/pg2bform/file/${files.guideSignature.id}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                      View Guide Signature ({files.guideSignature.filename})
-                    </a>
-                  </div>
-                ) : (
+                {!viewOnly ? (
                   <div className="flex items-center">
                     <label className="bg-blue-500 text-white px-4 py-2 rounded cursor-pointer hover:bg-blue-600">
                       Choose File
@@ -810,41 +880,36 @@ const PG_2_B = ({ viewOnly = false, data = {} }) => {
                         type="file"
                         className="hidden"
                         accept="image/jpeg"
-                        onChange={(e) => handleFileChange('guideSignature', e)}
+                        onChange={(e) => handleFileChange("guideSignature", e)}
                         ref={guideSignatureRef}
                       />
                     </label>
                     <span className="ml-2 text-sm">
-                      {files.guideSignature ? (files.guideSignature instanceof File ? files.guideSignature.name : files.guideSignature.filename) : "No file chosen"}
+                      {files.guideSignature
+                        ? files.guideSignature instanceof File
+                          ? files.guideSignature.name
+                          : files.guideSignature.filename
+                        : "No file chosen"}
                     </span>
                   </div>
+                ) : (
+                  <FilePreview
+                    fileList={files.guideSignature}
+                    fieldName="guideSignature"
+                    viewOnly={viewOnly}
+                    isStudent={isStudent}
+                  />
                 )}
-                {errors.guideSignature && <p className="text-red-500 text-xs mt-1">{errors.guideSignature}</p>}
+                {errors.guideSignature && (
+                  <p className="text-red-500 text-xs mt-1">{errors.guideSignature}</p>
+                )}
               </div>
             </div>
 
             {/* Additional Documents Upload / Preview */}
             <div>
               <label className="block font-semibold mb-2">Additional Documents (PDF & ZIP only)</label>
-              {viewOnly && files.additionalDocuments && files.additionalDocuments.length > 0 ? (
-                <div className="ml-2 mt-2 text-sm space-y-1">
-                  <p className="font-medium">Uploaded Additional Documents:</p>
-                  <ul className="list-disc ml-5">
-                    {files.additionalDocuments.map((file, index) => (
-                      <li key={index}>
-                        {file.id ? ( // Check if file object has an ID
-                          <a href={`http://localhost:5000/api/pg2bform/file/${file.id}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                            {file.filename}
-                          </a>
-                        ) : (
-                          // Fallback if somehow only filename is available (shouldn't happen with correct data prop)
-                          <span>{file.filename || file}</span>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : (
+              {!viewOnly ? (
                 <>
                   <div className="flex items-center">
                     <label className="bg-blue-500 text-white px-4 py-2 rounded cursor-pointer hover:bg-blue-600">
@@ -854,41 +919,31 @@ const PG_2_B = ({ viewOnly = false, data = {} }) => {
                         className="hidden"
                         multiple
                         accept=".pdf,.zip"
-                        onChange={(e) => handleFileChange('additionalDocuments', e)}
+                        onChange={(e) => handleFileChange("additionalDocuments", e)}
                         ref={additionalDocumentsRef}
                       />
                     </label>
                   </div>
-                  {/* Show selected files with remove option */}
-                  <div className="ml-2 mt-2 text-sm space-y-1">
-                    {files.additionalDocuments && files.additionalDocuments.length > 0 ? (
-                      Array.from(files.additionalDocuments).map((file, index) => (
-                        <div
-                          key={index}
-                          className="flex items-center justify-between bg-gray-100 px-2 py-1 rounded"
-                        >
-                          <span className="truncate">{typeof file === 'string' ? file : file.name}</span>
-                          {!viewOnly && ( // Allow removal only if not in viewOnly mode
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveFile('additionalDocuments', index)}
-                              className="text-red-600 hover:underline text-xs ml-2"
-                            >
-                              Remove
-                            </button>
-                          )}
-                        </div>
-                      ))
-                    ) : (
-                      <span>No file chosen</span>
-                    )}
-                  </div>
+                  <FilePreview
+                    fileList={files.additionalDocuments}
+                    fieldName="additionalDocuments"
+                    viewOnly={false}
+                    isStudent={isStudent}
+                    onRemove={handleRemoveFile}
+                  />
                 </>
+              ) : (
+                <FilePreview
+                  fileList={files.additionalDocuments}
+                  fieldName="additionalDocuments"
+                  viewOnly={viewOnly}
+                  isStudent={isStudent}
+                />
               )}
             </div>
           </div>
         )}
-        
+
         {/* Form Actions */}
         <div className="flex justify-between">
           <button onClick={() => window.history.back()} className="back-btn bg-red-500 text-white px-6 py-2 rounded hover:bg-red-600">

@@ -16,14 +16,6 @@ const HodDashboard = () => {
       try {
         setLoading(true);
         setError(null); // Clear any previous errors before a new fetch
-
-        // Make a POST request to your HOD dashboard endpoint
-        // The second argument of axios.post is the request body.
-        // For simply fetching all data, the body can be an empty object {}.
-        // Ensure this URL exactly matches your backend route:
-        // app.use("/api/facapplication", facapplicationRoutes);
-        // router.post("/form/hodDashboard", ...)
-        // So the full URL is http://localhost:5000/api/facapplication/form/hodDashboard
         const response = await axios.post("http://localhost:5000/api/facapplication/form/hodDashboard", {});
 
         // Process the data received from the backend
@@ -58,6 +50,10 @@ const HodDashboard = () => {
       app.studentDetails?.[0]?.rollNumber ||
       "N/A"
     );
+  };
+
+  const handleViewClick = (id) => {
+    navigate(`/application/${id}`); // Navigate to a specific application's detail page
   };
   /**
    * Generates a unique Validator ID in the format VA_XXX.
@@ -121,11 +117,7 @@ const HodDashboard = () => {
                         <td>
                           <button
                             className="view-btn"
-                            onClick={() =>
-                              // Navigate to the specific form view page
-                              // Use app.path if available, otherwise fallback to formId
-                              navigate(`/fachome/${app.path || (app.formId ? app.formId.toLowerCase() : '')}`)
-                            }
+                            onClick={() => handleViewClick(app._id)}
                           >
                             View Form
                           </button>

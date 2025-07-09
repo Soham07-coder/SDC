@@ -15,7 +15,6 @@ const PG_2_A = ({ viewOnly = false, data = null }) => {
         projectTitle: data.projectTitle || '',
         teamName: data.teamName || '',
         guideName: data.guideName || '',
-        department: data.department || '',
         date: data.date || '',
         hodRemarks: data.hodRemarks || '',
         studentDetails: data.studentDetails?.length
@@ -52,7 +51,7 @@ const PG_2_A = ({ viewOnly = false, data = null }) => {
       };
     }
     return {
-      organizingInstitute: '', projectTitle: '', teamName: '', guideName: '', department: '', date: '',
+      organizingInstitute: '', projectTitle: '', teamName: '', guideName: '', date: '',
       hodRemarks: '', studentDetails: [{ name: '', class: '', division: '', branch: '', rollNo: '', mobileNo: '' }],
       expenses: [{ description: '', amount: '' }],
       bankDetails: { beneficiary: '', ifsc: '', bankName: '', branch: '', accountType: '', accountNumber: '' },
@@ -64,15 +63,17 @@ const PG_2_A = ({ viewOnly = false, data = null }) => {
   const [files, setFiles] = useState(() => {
     if (data) {
       return {
-        // Map existing file URLs to objects with url, name, and a unique id (using url for simplicity)
-        bills: data.files?.bills?.map(url => ({ url, name: url.split('/').pop(), id: url })) || [],
-        zips: data.files?.zips?.map(url => ({ url, name: url.split('/').pop(), id: url })) || [],
-        studentSignature: data.files?.studentSignature ? { url: data.files.studentSignature, name: data.files.studentSignature.split('/').pop(), id: data.files.studentSignature } : null,
-        guideSignature: data.files?.guideSignature ? { url: data.files.guideSignature, name: data.files.guideSignature.split('/').pop(), id: data.files.guideSignature } : null,
+        bills: Array.isArray(data.bills) ? data.bills : [],
+        zips: Array.isArray(data.zipFile) ? data.zipFile : (data.zipFile ? [data.zipFile] : []),
+        studentSignature: data.studentSignature ? data.studentSignature : null,
+        guideSignature: data.guideSignature ? data.guideSignature : null,
       };
     }
     return {
-      bills: [], zips: [], studentSignature: null, guideSignature: null,
+      bills: [],
+      zips: [],
+      studentSignature: null,
+      guideSignature: null,
     };
   });
 
@@ -110,34 +111,31 @@ const PG_2_A = ({ viewOnly = false, data = null }) => {
 
   // Helper function to determine if a field is editable based on role and viewOnly prop
   const canEditField = (fieldName) => {
-    if (viewOnly) return false;
-    if (isLoadingRole || !currentUserRole) return false;
+    if (viewOnly || isLoadingRole || !currentUserRole) return false;
+
+    const editableByStatus = isNewForm || formData.status === 'pending' || formData.status === 'draft';
 
     if (currentUserRole === 'student') {
       const studentEditableFields = [
-        'organizingInstitute', 'projectTitle', 'teamName', 'guideName', 'department', 'date',
+        'organizingInstitute', 'projectTitle', 'teamName', 'guideName','date',
         'studentDetails', 'expenses', 'bankDetails', 'svvNetId',
-        'studentSignature', 'bills', 'zips'
+        'studentSignature', 'bills', 'zips','guideSignature',
       ];
-      // Students can only edit if it's a new form or if the form status allows (e.g., 'draft' or 'pending' before first approval)
-      // For simplicity, assuming students can edit if it's a new form. For existing forms, they might need specific status.
-      return isNewForm && studentEditableFields.includes(fieldName);
+      return editableByStatus && studentEditableFields.includes(fieldName);
     }
 
     if (currentUserRole === 'guide') {
-      const guideEditableFields = ['guideSignature', 'hodRemarks']; // Guide might add remarks for HOD
-      return guideEditableFields.includes(fieldName);
+      const guideEditableFields = ['hodRemarks'];
+      return editableByStatus && guideEditableFields.includes(fieldName);
     }
 
     if (currentUserRole === 'hod') {
-      const hodEditableFields = [
-        'hodRemarks', 'status', 'amountRecommended', 'comments', 'finalAmount'
-      ];
-      return hodEditableFields.includes(fieldName);
+      const hodEditableFields = ['hodRemarks', 'status', 'amountRecommended', 'comments', 'finalAmount'];
+      return editableByStatus && hodEditableFields.includes(fieldName);
     }
 
     if (currentUserRole === 'admin') {
-      return true; // Admin can edit all fields
+      return true; // Admin can always edit
     }
 
     return false;
@@ -260,7 +258,7 @@ const PG_2_A = ({ viewOnly = false, data = null }) => {
     // Only validate fields relevant to the student for initial submission
     if (currentUserRole === 'student' && isNewForm) {
       const requiredFields = [
-        "projectTitle", "teamName", "guideName", "department", "organizingInstitute"
+        "projectTitle", "teamName", "guideName", "organizingInstitute"
       ];
       for (const field of requiredFields) {
         if (!formData[field] || formData[field].toString().trim() === "") {
@@ -455,7 +453,7 @@ const PG_2_A = ({ viewOnly = false, data = null }) => {
       setUserMessage({ text: `PG2A Form ${isNewForm ? 'submitted' : 'updated'} successfully!`, type: 'success' });
       if (isNewForm) {
         setFormData({ // Reset form for new entry
-          organizingInstitute: '', projectTitle: '', teamName: '', guideName: '', department: '', date: '',
+          organizingInstitute: '', projectTitle: '', teamName: '', guideName: '', date: '',
           hodRemarks: '', studentDetails: [{ name: '', class: '', division: '', branch: '', rollNo: '', mobileNo: '' }],
           expenses: [{ description: '', amount: '' }], bankDetails: { beneficiary: '', ifsc: '', bankName: '', branch: '', accountType: '', accountNumber: '' },
           status: 'pending', svvNetId: '', amountClaimed: '', amountRecommended: '', comments: '', finalAmount: '', formId: null,
@@ -495,20 +493,14 @@ const PG_2_A = ({ viewOnly = false, data = null }) => {
   const isStudent = currentUserRole === 'student'; // Derived state for FilePreview
 
   const FilePreview = useCallback(({ fileList, onRemove, fieldName }) => {
-    // Do not render anything if viewOnly and student for supporting documents
-    const isSupportingDocument = (fieldName === 'bills' || fieldName === 'zips');
-    if (isSupportingDocument && viewOnly && isStudent) {
-      return null; // Completely hide the section
-    }
+    const isSupportingDocument = fieldName === 'bills' || fieldName === 'zips';
+    if (isSupportingDocument && viewOnly && isStudent) return null;
 
-    // Determine if we should show the remove button based on edit permissions
     const showRemoveButton = canEditField(fieldName);
 
-    // Filter out files that shouldn't be displayed (e.g., null or empty objects)
-    const filteredFiles = fileList.filter(fileInfo => {
-      // A fileInfo object is valid if it has a 'file' (new upload) or 'url'/'id'/'fileId' (existing)
-      return fileInfo && (fileInfo.file instanceof File || fileInfo.url || fileInfo.fileId || fileInfo.id);
-    });
+    const filteredFiles = fileList.filter(fileInfo =>
+      fileInfo && (fileInfo.file instanceof File || fileInfo.url || fileInfo.fileId || fileInfo.id)
+    );
 
     if (filteredFiles.length === 0) {
       return <p className="text-gray-500 text-sm italic mt-1">No file selected.</p>;
@@ -517,45 +509,56 @@ const PG_2_A = ({ viewOnly = false, data = null }) => {
     return (
       <ul className="mt-2 list-disc list-inside space-y-1">
         {filteredFiles.map((fileInfo, index) => {
-          // Determine if the file is an already uploaded file (has a URL/ID)
           const isUploadedFile = !!(fileInfo.url || fileInfo.fileId || fileInfo.id);
-          // Construct the display URL for existing files
-          const displayUrl = fileInfo.url ||
-                         (fileInfo.fileId ? `http://localhost:5000/api/pg2aform/file/${fileInfo.fileId}` : null) || // <-- Full path here
-                         (fileInfo.id ? `http://localhost:5000/api/pg2aform/file/${fileInfo.id}` : null);     // <-- Full path here
-          // Determine the file name for display
-          const fileName = fileInfo.name || (fileInfo.filename || (fileInfo.file ? fileInfo.file.name : 'Unnamed File'));
-          // Determine file size for display
-          const fileSizeMB = fileInfo.file ? (fileInfo.file.size / (1024 * 1024)).toFixed(2) : (fileInfo.size ? (fileInfo.size / (1024 * 1024)).toFixed(2) : 'N/A');
 
+          // Construct the file URL
+          let displayUrl = fileInfo.url;
+          if (!displayUrl && (fileInfo.id || fileInfo.fileId)) {
+            const id = fileInfo.id || fileInfo.fileId;
+            displayUrl = `/api/pg2aform/uploads/files/${id}?bucket=pg2afiles`;
+          }
+          // Determine filename and size
+          const fileName =
+            fileInfo.originalName ||
+            fileInfo.name ||
+            fileInfo.filename ||
+            (fileInfo.file?.name || 'Unnamed File');
+
+          const fileSizeMB = fileInfo.file
+            ? (fileInfo.file.size / (1024 * 1024)).toFixed(2)
+            : fileInfo.size
+            ? (fileInfo.size / (1024 * 1024)).toFixed(2)
+            : 'N/A';
+
+          // Determine link text
           let linkText;
           if (viewOnly && isUploadedFile) {
-            // Display custom view text based on fieldName when in viewOnly mode and file is uploaded
             switch (fieldName) {
               case 'bills':
-                linkText = `View Bill ${index !== null ? index + 1 : ''}`;
+                linkText = `View Bill ${index + 1}`;
                 break;
               case 'zips':
-                linkText = "View Documents ZIP";
+                linkText = 'View Documents ZIP';
                 break;
               case 'guideSignature':
-                linkText = "View Guide Signature";
+                linkText = 'View Guide Signature';
                 break;
               case 'studentSignature':
-                linkText = "View Student Signature";
+                linkText = 'View Student Signature';
                 break;
               default:
-                linkText = "View File";
+                linkText = 'View File';
             }
           } else {
-            // Show filename and size when NOT viewOnly or file not uploaded yet
             linkText = `${fileName} (${fileSizeMB} MB)`;
           }
 
           return (
-            <li key={fileInfo._id || fileInfo.id || index} className="flex items-center justify-between text-sm text-gray-700 p-1 border rounded bg-gray-50 mb-1">
+            <li
+              key={fileInfo._id || fileInfo.id || index}
+              className="flex items-center justify-between text-sm text-gray-700 p-1 border rounded bg-gray-50 mb-1"
+            >
               {viewOnly && isUploadedFile ? (
-                // Render as a clickable link in viewOnly mode for uploaded files
                 <a
                   href={displayUrl}
                   target="_blank"
@@ -565,15 +568,14 @@ const PG_2_A = ({ viewOnly = false, data = null }) => {
                   {linkText}
                 </a>
               ) : (
-                // Render as plain text otherwise
                 <span className="flex-grow">{linkText}</span>
               )}
 
-              {showRemoveButton && ( // Show remove button only if editable
+              {showRemoveButton && (
                 <button
                   type="button"
                   className="ml-4 text-red-600 hover:underline"
-                  onClick={() => onRemove(fieldName, index)} // Call onRemove with fieldName and index
+                  onClick={() => onRemove(fieldName, index)}
                 >
                   Remove
                 </button>
@@ -583,7 +585,8 @@ const PG_2_A = ({ viewOnly = false, data = null }) => {
         })}
       </ul>
     );
-  }, [viewOnly, isStudent, removeFile, canEditField]); // Dependencies for useCallback
+  }, [viewOnly, isStudent, removeFile, canEditField]);
+
 
   if (isLoadingRole) {
     return (
@@ -654,19 +657,6 @@ const PG_2_A = ({ viewOnly = false, data = null }) => {
             value={formData.guideName}
             onChange={handleChange}
             disabled={!canEditField('guideName')}
-            className="w-full p-2 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
-          />
-        </div>
-
-        {/* Department */}
-        <div className="mb-6">
-          <label className="block font-semibold mb-2">Department:</label>
-          <input
-            type="text"
-            name="department"
-            value={formData.department}
-            onChange={handleChange}
-            disabled={!canEditField('department')}
             className="w-full p-2 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
           />
         </div>

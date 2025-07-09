@@ -23,8 +23,8 @@ const fileBaseUrlMapper = {
     "UG_3_A": "/api/ug3aform/file", 
     "UG_3_B": "/api/ug3bform/file",
     "PG_1": "/api/pg1form/uploads/files",
-    "PG_2_A": "/api/pg2aform/uploads/files",
-    "PG_2_B": "/api/pg2bform/uploads/files",
+    "PG_2_A": "/api/pg2aform/file",
+    "PG_2_B": "/api/pg2bform/files",
     "R1": "/api/r1form/uploads/files",
 };
 
@@ -83,14 +83,14 @@ const getFileDetailsAndUrl = async (fileId, baseUrlForServingFile, formType, mon
     const gfsBucket = new mongoose.mongo.GridFSBucket(mongooseConnection.db, { bucketName });
 
     try {
-        console.log(`🔍 Searching in GridFS with ID: ${fileId}...`);
+        //console.log(`🔍 Searching in GridFS with ID: ${fileId}...`);
         const files = await gfsBucket.find({ _id: new mongoose.Types.ObjectId(fileId) }).toArray();
 
-        console.log(`📂 Files found:`, files);
+        //console.log(`📂 Files found:`, files);
 
         if (files.length > 0) {
             const fileData = files[0];
-            console.log(`✅ File found: "${fileData.filename}" with ID: "${fileId}".`);
+            //console.log(`✅ File found: "${fileData.filename}" with ID: "${fileId}".`);
 
             return {
                 id: fileData._id.toString(),
@@ -117,8 +117,18 @@ const getFileDetailsAndUrl = async (fileId, baseUrlForServingFile, formType, mon
  * @param {Object} gfsBucket - The GridFS bucket instance for file operations.
  * @returns {Promise<Object>} - The processed form object with URLs and standardized fields.
  */
-const processFormForDisplay = async (form, formType, userBranchFromRequest) => {
+const processFormForDisplay = async (form, formType, userBranchFromRequest,gfsBucket, userRole) => {
     let processedForm = { ...form };
+
+    const ACCESS_LEVELS = {
+        VALIDATOR: 'validator',
+        ADMIN: 'admin',
+        PRINCIPAL: 'principal',
+        HOD: 'hod',
+        INSTITUTE_COORDINATOR: 'coordinator'
+    };
+
+    const isStudent = (userRole || "").toLowerCase() === "student";
 
     const getObjectIdString = (idField) => {
         if (typeof idField === 'string') return idField;
@@ -126,6 +136,7 @@ const processFormForDisplay = async (form, formType, userBranchFromRequest) => {
         if (idField && mongoose.Types.ObjectId.isValid(idField)) return idField.toString();
         return null;
     };
+
 
     processedForm._id = form._id?.$oid || form._id?.toString() || form._id;
 
@@ -163,15 +174,44 @@ const processFormForDisplay = async (form, formType, userBranchFromRequest) => {
     processedForm.employeeCodes = [];
 
     const getFile = async (id) => {
+        if (isStudent) {
+            console.log(`File access denied for student role for ID: ${id}`);
+            return null;
+        }
+        const isValid = mongoose.Types.ObjectId.isValid(id);
+        console.log(`🔎 getFile - ID: ${id}, Valid: ${isValid}`);
         return await getFileDetailsAndUrl(id, fileBaseUrl, formType, mongoose.connection);
     };
 
-    const getMultipleFiles = async (ids) => {
-        const filePromises = ids.map(fileMeta => {
-            if (fileMeta?.id) return getFile(fileMeta.id);
-            if (typeof fileMeta === 'string') return getFile(fileMeta); // For some formTypes that store string IDs directly
+    const getMultipleFiles = async (fileList) => {
+        if (isStudent) {
+            console.log(`Multiple file access denied for student role for file list.`);
+            return [];
+        }
+
+        const filePromises = fileList.map(fileMeta => {
+            if (!fileMeta) return null;
+
+            // Case: { id: ObjectId }
+            if (fileMeta.id && typeof fileMeta.id === 'string') {
+                return getFile(fileMeta.id);
+            }
+
+            // Case: raw ObjectId string
+            if (typeof fileMeta === 'string') {
+                return getFile(fileMeta);
+            }
+
+            // Case: fileMeta is an ObjectId directly
+            if (mongoose.Types.ObjectId.isValid(fileMeta)) {
+                return getFile(fileMeta.toString());
+            }
+
+            // Case: unknown format (log and ignore)
+            console.warn('⚠️ Unrecognized fileMeta format:', fileMeta);
             return null;
         });
+
         return (await Promise.all(filePromises)).filter(Boolean);
     };
 
@@ -333,20 +373,21 @@ const processFormForDisplay = async (form, formType, userBranchFromRequest) => {
             break;
 
         case "PG_2_B":
-            if (form.paperCopy) {
-                processedForm.paperCopy = await getFile(form.paperCopy);
-            }
-            if (form.groupLeaderSignature) {
-                processedForm.groupLeaderSignature = await getFile(form.groupLeaderSignature);
+            const groupSigId = getObjectIdString(form.groupLeaderSignature?.id);
+            if (groupSigId) {
+                processedForm.groupLeaderSignature = await getFile(groupSigId);
                 processedForm.studentSignature = processedForm.groupLeaderSignature;
             }
-            if (form.guideSignature) {
-                processedForm.guideSignature = await getFile(form.guideSignature);
-            }
-            if (form.additionalDocuments && form.additionalDocuments.length > 0) {
-                processedForm.additionalDocuments = await getMultipleFiles(form.additionalDocuments);
+
+            const guideSigId = getObjectIdString(form.guideSignature?.id);
+            if (guideSigId) {
+                processedForm.guideSignature = await getFile(guideSigId);
             }
 
+            if (form.additionalDocuments && form.additionalDocuments.length > 0) {
+                const additionalDocIds = form.additionalDocuments.map(doc => getObjectIdString(doc.id)).filter(Boolean);
+                processedForm.additionalDocuments = await getMultipleFiles(additionalDocIds);
+            }
             processedForm.name = form.studentName || "N/A";
             processedForm.projectTitle = form.projectTitle;
             processedForm.guideName = form.guideName;
@@ -687,18 +728,52 @@ router.post("/:id", async (req, res) => {
             return res.status(400).json({ message: "Invalid application ID format" });
         }
 
-        // Define the base filter for the application
-        let findFilter = { _id: id };
-        const allowedRolesToViewAll = ['validator', 'admin', 'coordinator']; // Define roles with broad view access
+        const ACCESS_LEVELS = {
+            STUDENT: 'student',
+            VALIDATOR: 'validator',
+            ADMIN: 'admin',
+            PRINCIPAL: 'principal',
+            HOD: 'hod',
+            INSTITUTE_COORDINATOR: 'coordinator' // Assuming 'coordinator' maps to 'institute coordinator'
+        };
 
-        if (!allowedRolesToViewAll.includes(role.toLowerCase())) {
-            // If the user's role is NOT in the allowedRolesToViewAll, then apply the svvNetId filter.
-            findFilter.svvNetId = svvNetId;
-            console.log(`Access restricted: User role '${role}' requires svvNetId match.`);
-        } else {
-            console.log(`Access granted: User role '${role}' allows viewing any application by ID.`);
+        // Admin, Validator, and PRINCIPAL now have global view access
+        const ROLES_WITH_GLOBAL_VIEW_ACCESS = [
+            ACCESS_LEVELS.VALIDATOR,
+            ACCESS_LEVELS.ADMIN,
+            ACCESS_LEVELS.PRINCIPAL // Principal moved back here for global view access
+        ];
+
+        // No roles will have branch-specific view access for this route anymore,
+        // as HOD and Institute Coordinator will now have student-level access for this endpoint.
+        const ROLES_WITH_BRANCH_SPECIFIC_VIEW_ACCESS = [];
+
+        let findFilter = { _id: id };
+        const userRole = role.toLowerCase(); // Standardize role to lowercase once
+
+        console.log(`Backend received request for Application ID: ${id}`);
+        console.log(`User details - userBranch: ${userBranch}, svvNetId: ${svvNetId}, role: ${role}`);
+
+        // Input validation (already present, but good to reiterate its importance)
+        if (!svvNetId || !userRole) {
+            return res.status(400).json({
+                message: "svvNetId and role are required to access applications"
+            });
         }
-        // --- END AUTHORIZATION LOGIC ---
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: "Invalid application ID format." });
+        }
+
+        // --- Refined Authorization Logic ---
+        if (ROLES_WITH_GLOBAL_VIEW_ACCESS.includes(userRole)) {
+            // Admin, Validator, and Principal can view any application by ID. No additional filter needed.
+            console.log(`Access granted (Global View): User role '${userRole}' allows viewing any application by ID. Filter:`, findFilter);
+        } else {
+            // Default: Any other role (including HOD, Institute Coordinator, and Student)
+            // can only view applications that match their svvNetId.
+            findFilter.svvNetId = svvNetId;
+            console.log(`Access restricted (User-Specific View): User role '${userRole}' requires svvNetId match. Filter:`, findFilter);
+        }
 
         const collections = [
             { model: UG1Form, type: "UG_1" },
@@ -732,9 +807,8 @@ router.post("/:id", async (req, res) => {
             });
         }
 
-        // Assuming processFormForDisplay is defined elsewhere in your application.
-        // It's not part of this file snippet, so ensure it's imported or defined.
-        const processedApplication = await processFormForDisplay(application, foundType, userBranch, gfsBucket);
+        // Pass the userRole to processFormForDisplay
+        const processedApplication = await processFormForDisplay(application, foundType, userBranch, gfsBucket, userRole);
         res.json(processedApplication);
     } catch (error) {
         console.error("Error fetching application by ID (POST route):", error);

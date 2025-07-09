@@ -86,7 +86,12 @@ router.post('/submit', uploadFields, async (req, res) => {
     const zipFilesData = req.files.zipFiles ? await Promise.all(req.files.zipFiles.map(uploadFile)) : [];
 
     const parsedBankDetails = typeof bankDetails === 'string' ? JSON.parse(bankDetails) : bankDetails;
-    const svvNetIdClean = svvNetId ? String(svvNetId).trim() : '';
+    let svvNetIdClean = '';
+    if (Array.isArray(svvNetId)) {
+      svvNetIdClean = svvNetId[0].trim();
+    } else {
+      svvNetIdClean = svvNetId ? svvNetId.trim() : '';
+    }
 
     const newForm = new PG1Form({
       svvNetId: svvNetIdClean,
@@ -122,6 +127,8 @@ router.post('/submit', uploadFields, async (req, res) => {
 
     await newForm.save();
     uploadedFileIds.length = 0; // Clear rollback list upon successful save
+    console.log('Received svvNetId:', svvNetId);
+    console.log('Cleaned svvNetId:', svvNetIdClean);
     res.status(201).json({ message: 'PG1 form submitted successfully!', id: newForm._id });
   } catch (err) {
     console.error('PG1 form submission error:', err);
@@ -187,6 +194,42 @@ router.put('/:formId/review', async (req, res) => {
   } catch (error) {
     console.error("Error updating PG1 form review:", error);
     res.status(500).json({ message: "Server error updating form review." });
+  }
+});
+
+// File Fetch Route
+router.get('/file/:fileId', async (req, res) => {
+  try {
+    const fileId = req.params.fileId;
+
+    if (!gfsBucket) {
+      return res.status(500).json({ message: "GridFSBucket not initialized." });
+    }
+
+    const _id = new mongoose.Types.ObjectId(fileId);
+
+    // Check if file exists
+    const files = await gfsBucket.find({ _id }).toArray();
+    if (!files || files.length === 0) {
+      return res.status(404).json({ message: "File not found." });
+    }
+
+    const file = files[0];
+
+    res.set('Content-Type', file.contentType);
+    res.set('Content-Disposition', `inline; filename="${file.filename}"`);
+
+    const downloadStream = gfsBucket.openDownloadStream(_id);
+    downloadStream.pipe(res);
+
+    downloadStream.on('error', (err) => {
+      console.error('Stream error:', err);
+      res.status(500).json({ message: 'Error streaming file.' });
+    });
+
+  } catch (err) {
+    console.error('Error fetching file:', err);
+    res.status(500).json({ message: 'Server error fetching file.' });
   }
 });
 

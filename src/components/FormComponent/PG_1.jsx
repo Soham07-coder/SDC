@@ -148,7 +148,7 @@ const PG_1 = ({ viewOnly = false, data = null }) => {
       if (userString) {
         try {
           const user = JSON.parse(userString);
-          storedSvvNetId = typeof user.svvNetId === "string" ? user.svvNetId : Array.isArray(user.svvNetId) ? user.svvNetId[0] : "";
+          storedSvvNetId = user.svvNetId || '';
         } catch (e) {
           console.error("Failed to parse user data from localStorage on reset:", e);
         }
@@ -404,27 +404,13 @@ const PG_1 = ({ viewOnly = false, data = null }) => {
     e.preventDefault();
     if (viewOnly) return;
 
-    let svvNetId = "";
-    let department = "";
-
     const userString = localStorage.getItem("user");
+    let department = '';
 
     if (userString) {
       try {
         const user = JSON.parse(userString);
-        svvNetId =
-          typeof user.svvNetId === "string"
-            ? user.svvNetId
-            : Array.isArray(user.svvNetId)
-            ? user.svvNetId[0]
-            : "";
-
-        department =
-          typeof user.branch === "string"
-            ? user.branch
-            : Array.isArray(user.branch)
-            ? user.branch[0]
-            : "";
+        department = user.branch || '';
       } catch (e) {
         console.error("❌ Failed to parse user data from localStorage:", e);
         showMessageBox("User session corrupted. Please log in again.", "error");
@@ -432,15 +418,16 @@ const PG_1 = ({ viewOnly = false, data = null }) => {
       }
     }
 
-    if (!svvNetId || !department) {
+    if (!formData.svvNetId || !department) {
       showMessageBox("Authentication error: svvNetId or branch not found. Please log in.", "error");
       return;
     }
 
+
     try {
       const formPayload = new FormData();
 
-      formPayload.append("svvNetId", svvNetId);
+      formPayload.append('svvNetId', formData.svvNetId.trim());
       formPayload.append("department", department);
 
       Object.entries(formData).forEach(([key, value]) => {
@@ -520,7 +507,7 @@ const PG_1 = ({ viewOnly = false, data = null }) => {
           organization: '', reason: '', knowledgeUtilization: '',
           bankDetails: { beneficiary: '', ifsc: '', bankName: '', branch: '', accountType: '', accountNumber: '' },
           registrationFee: '', previousClaim: 'No', claimDate: '', amountReceived: '',
-          amountSanctioned: '', status: 'pending', svvNetId: svvNetId,
+          amountSanctioned: '', status: 'pending', svvNetId: formData.svvNetId, // ✅ FIXED HERE
         });
         setFiles({
           receiptCopy: [], additionalDocuments: [], guideSignature: [],
