@@ -57,7 +57,7 @@ const PendingApplications = () => {
             setError("User session corrupted. Please log in again.");
             setLoading(false);
             // Optionally, navigate to login page here:
-            // navigate('/login');
+            navigate('/login');
             return;
           }
         }

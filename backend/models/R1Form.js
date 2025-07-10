@@ -27,8 +27,6 @@ const R1FormSchema = new mongoose.Schema({
   paperTitle: { type: String, default: '' },
   paperLink: { type: String, default: '' }, // Now accepts any string, including "NO" or empty
   authors: { type: [String], required: true }, // Array of strings
-
-  sttpTitle: { type: String, default: '' },
   organizers: { type: String, default: '' },
   reasonForAttending: { type: String, default: '' },
   numberOfDays: { type: Number, default: 0 },

@@ -1,5 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+// R1.jsx
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import axios from 'axios'; // Assuming axios is used for API calls
+
+// The base URL for R1 form files, hardcoded as per the user's request.
+// This matches the backend route defined in r1formRoutes.js for serving files.
+const R1_BASE_FILE_URL = "http://localhost:5000/api/r1form/files";
 
 // Placeholder for user message state
 const useUserMessage = () => {
@@ -17,56 +22,129 @@ const useUserMessage = () => {
   return [userMessage, setUserMessage];
 };
 
+// Helper to get formatted date string for input type="date"
+const getFormattedDate = (dateString) => {
+    return dateString ? new Date(dateString).toISOString().slice(0, 10) : '';
+};
+
+// Helper to process single file metadata consistently
+// Uses the globally defined R1_BASE_FILE_URL
+const processSingleFileMetadata = (fileMetadata) => {
+  if (!fileMetadata) return null;
+
+  const fileId = fileMetadata?.id?.$oid || fileMetadata?.id;
+  // Construct the URL using the predefined base URL
+  const fileUrl = fileMetadata.url || (fileId ? `${R1_BASE_FILE_URL}/${fileId}?bucket=r1files` : null);
+
+  if (!fileId && !fileUrl) return null;
+
+  return {
+    file: null,
+    name: fileMetadata.originalName || fileMetadata.filename || 'Unknown File',
+    url: fileUrl,
+    id: fileId
+  };
+};
+
+// Helper to process an array of file metadata objects consistently
+// Uses the globally defined R1_BASE_FILE_URL
+const processMultipleFilesMetadata = (filesArray) => {
+  if (!Array.isArray(filesArray)) return [];
+  return filesArray.map(doc => {
+    const fileId = doc?.id?.$oid || doc?.id;
+    // Construct the URL using the predefined base URL
+    const fileUrl = doc?.url || (fileId ? `${R1_BASE_FILE_URL}/${fileId}?bucket=r1files` : null);
+    if (!fileId && !fileUrl) return null;
+
+    return {
+      file: null,
+      name: doc.originalName || doc.filename || 'Unknown Document',
+      url: fileUrl,
+      id: fileId,
+    };
+  }).filter(Boolean);
+};
+
 // Placeholder for validation logic (adapt as needed for R1 form)
 const validateForm = (formData, files, viewOnly, isStudent) => {
   const newErrors = {};
 
-  // Example: Check for required fields
+  // Helper to prettify field names for messages
+  const prettyFieldNameMap = {
+    studentName: "Student Name",
+    yearOfAdmission: "Year of Admission",
+    paperTitle: "Paper Title",
+    guideName: "Guide Name",
+    organizers: "Organizers",
+    reasonForAttending: "Reason for Attending",
+    numberOfDays: "Number of Days",
+    dateFrom: "Start Date",
+    dateTo: "End Date",
+    registrationFee: "Registration Fee",
+    beneficiary: "Beneficiary Name",
+    ifsc: "IFSC Code",
+    bankName: "Bank Name",
+    branch: "Branch",
+    accountType: "Account Type",
+    accountNumber: "Account Number"
+  };
+
+  // Validate required fields
   const requiredFields = [
-    "studentName", "yearOfAdmission", "paperTitle", "guideName",
-    "sttpTitle", "organizers", "reasonForAttending",
+    "studentName", "yearOfAdmission","guideName",
+    "paperTitle", "organizers", "reasonForAttending",
     "numberOfDays", "dateFrom", "dateTo", "registrationFee"
   ];
+
   for (const field of requiredFields) {
-    if (!formData[field] || (typeof formData[field] === 'string' && formData[field].trim() === '') || formData[field] === null) {
-      newErrors[field] = `${field.replace(/([A-Z])/g, ' $1').toLowerCase()} is required`;
+    const value = formData[field];
+    if (!value || (typeof value === "string" && value.trim() === "")) {
+      newErrors[field] = `${prettyFieldNameMap[field] || field} is required.`;
     }
   }
 
-  // File requirements (only for new submissions by students)
-  if (!viewOnly && isStudent) {
-      if (!files.studentSignature) newErrors.studentSignature = 'Student signature is required.';
-      if (!files.guideSignature) newErrors.guideSignature = 'Guide signature is required.';
-      if (!files.hodSignature) newErrors.hodSignature = 'HOD signature is required.';
-      // At least one proof document (proofDocument OR pdfs)
-      if (!files.proofDocument && files.pdfs.length === 0) {
-        newErrors.proofDocument = 'At least one proof document (single proof document or multiple PDFs) is required.';
-      }
-  }
+  // Validate authors
+  const nonEmptyAuthors = Array.isArray(formData.authors)
+    ? formData.authors.filter(author => author && author.trim() !== "")
+    : [];
 
-  // Example: Author validation
-  const nonEmptyAuthors = formData.authors.filter(author => author && author.trim() !== '');
   if (nonEmptyAuthors.length === 0) {
-    newErrors.authors = 'At least one author name is required';
+    newErrors.authors = "At least one author name is required.";
   }
 
-  // Example: Bank details validation
-  const { beneficiary, ifsc, bankName, branch, accountType, accountNumber } = formData.bankDetails;
-  if (!beneficiary || beneficiary.trim() === '') newErrors.beneficiary = 'Beneficiary name is required';
-  if (!ifsc || ifsc.trim() === '') newErrors.ifsc = 'IFSC code is required';
-  if (!bankName || bankName.trim() === '') newErrors.bankName = 'Bank name is required';
-  if (!branch || branch.trim() === '') newErrors.branch = 'Branch is required';
-  if (!accountType || accountType.trim() === '') newErrors.accountType = 'Account type is required';
-  if (!accountNumber || accountNumber.trim() === '') newErrors.accountNumber = 'Account number is required';
+  // Validate bank details
+  const bank = formData.bankDetails || {};
+  const {
+    beneficiary = "", ifsc = "", bankName = "",
+    branch = "", accountType = "", accountNumber = ""
+  } = bank;
 
-  // Return the errors object. The caller will check if it's empty.
+  if (beneficiary.trim() === "") newErrors.beneficiary = "Beneficiary name is required.";
+  if (ifsc.trim() === "") newErrors.ifsc = "IFSC code is required.";
+  if (bankName.trim() === "") newErrors.bankName = "Bank name is required.";
+  if (branch.trim() === "") newErrors.branch = "Branch is required.";
+  if (accountType.trim() === "") newErrors.accountType = "Account type is required.";
+  if (accountNumber.trim() === "") newErrors.accountNumber = "Account number is required.";
+
+  // Validate required file uploads (only if user is a student and not in view-only mode)
+  if (!viewOnly && isStudent) {
+    if (!files.studentSignature) newErrors.studentSignature = "Student signature is required.";
+    if (!files.guideSignature) newErrors.guideSignature = "Guide signature is required.";
+    if (!files.hodSignature) newErrors.hodSignature = "HOD signature is required.";
+
+    const hasProofDocument = !!files.proofDocument;
+    const hasPDFs = Array.isArray(files.pdfs) && files.pdfs.length > 0;
+
+    if (!hasProofDocument && !hasPDFs) {
+      newErrors.proofDocument = "At least one proof document (single proofDocument or multiple PDFs) is required.";
+    }
+  }
+
   return newErrors;
 };
 
-
-const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
-  // Define the base URL for fetching files from your backend's /file/:fileId route
-  const baseFileUrl = 'http://localhost:5000/api/r1form/file'; // Adjust if your R1 file serving route is different
+// Removed baseFileUrl from props, now using R1_BASE_FILE_URL directly
+const R1 = ({ data, viewOnly }) => {
   const [errorMessage, setErrorMessage] = useState("");
 
   // Determine user role and if student
@@ -80,24 +158,19 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
       try {
         const user = JSON.parse(userString);
         if (user.role) {
-          setCurrentUserRole(user.role);
+          setCurrentUserRole(user.role.toLowerCase().trim());
         }
       } catch (e) {
         console.error("Failed to parse user data from localStorage:", e);
       }
     }
-  }, []);
+  }, []); // Empty dependency array as this only needs to run once on mount
 
   const [formData, setFormData] = useState(() => {
-    // Helper to get formatted date string for input type="date"
-    const getFormattedDate = (dateString) => {
-        return dateString ? new Date(dateString).toISOString().slice(0, 10) : '';
-    };
-
     const baseFormData = {
       guideName: '',
       coGuideName: '',
-      employeeCodes: [], // Initialize as an empty array as backend expects array
+      employeeCodes: [],
       studentName: '',
       yearOfAdmission: '',
       branch: '',
@@ -109,7 +182,6 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
       paperTitle: '',
       paperLink: '',
       authors: ['', '', '', ''],
-      sttpTitle: '',
       organizers: '',
       reasonForAttending: '',
       numberOfDays: '',
@@ -129,13 +201,13 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
       amountClaimed: '',
       finalAmountSanctioned: '',
       status: 'pending',
-      svvNetId: '', // Initialize svvNetId
-      sdcChairpersonDate: '', // Added for SDC Chairperson date
+      svvNetId: '',
+      sdcChairpersonDate: '',
     };
 
     if (viewOnly && data) {
       return {
-        ...baseFormData, // Start with defaults
+        ...baseFormData,
         guideName: data.guideName || '',
         coGuideName: data.coGuideName || '',
         employeeCodes: Array.isArray(data.employeeCodes) ? data.employeeCodes : (data.employeeCodes ? [data.employeeCodes] : []),
@@ -150,7 +222,6 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
         paperTitle: data.paperTitle || '',
         paperLink: data.paperLink || '',
         authors: Array.isArray(data.authors) ? data.authors : ['', '', '', ''],
-        sttpTitle: data.sttpTitle || '',
         organizers: data.organizers || '',
         reasonForAttending: data.reasonForAttending || '',
         numberOfDays: data.numberOfDays || '',
@@ -163,62 +234,35 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
         amountClaimed: data.amountClaimed || '',
         finalAmountSanctioned: data.finalAmountSanctioned || '',
         status: data.status || 'pending',
-        svvNetId: data?.svvNetId || '', // FIXED: Added optional chaining here
-        sdcChairpersonDate: getFormattedDate(data.sdcChairpersonDate), // Populate SDC Chairperson date
+        svvNetId: data?.svvNetId || '',
+        sdcChairpersonDate: getFormattedDate(data.sdcChairpersonDate),
       };
     }
     return baseFormData;
   });
 
   const [files, setFiles] = useState(() => {
-    // Helper to process a single file metadata object into a frontend-friendly format
-    const processSingleFileMetadata = (fileMetadata) => {
-      // Handle MongoDB $oid structure
-      const fileId = fileMetadata?.id?.$oid || fileMetadata?.id;
-      if (!fileId) return null;
-      return {
-        file: null, // Always null for existing files; they are URLs
-        name: fileMetadata.originalName || fileMetadata.filename || 'Unknown File',
-        url: `${baseFileUrl}/${fileId}`, // Use extracted ID
-        id: fileId // Keep the ID for potential future use or display
-      };
-    };
-
-    // Helper to process an array of file metadata objects
-    const processMultipleFilesMetadata = (filesArray) => {
-      if (!Array.isArray(filesArray)) return [];
-      return filesArray.map(doc => {
-        const fileId = doc?.id?.$oid || doc?.id; // Handle $oid nesting
-        if (!fileId) return null;
-        return {
-          file: null, // Always null for existing files; they are URLs
-          name: doc.originalName || doc.filename || 'Unknown Document',
-          url: `${baseFileUrl}/${fileId}`,
-          id: fileId
-        };
-      }).filter(Boolean); // Filter out any nulls
-    };
-
+    // Call helper functions without passing baseFileUrl, they now use the global constant
     if (viewOnly && data) {
       return {
-        // Access nested file metadata objects from data.proofDocumentFileId etc.
-        proofDocument: processSingleFileMetadata(data.proofDocumentFileId),
-        studentSignature: processSingleFileMetadata(data.studentSignatureFileId),
-        guideSignature: processSingleFileMetadata(data.guideSignatureFileId),
-        hodSignature: processSingleFileMetadata(data.hodSignatureFileId),
-        sdcChairpersonSignature: processSingleFileMetadata(data.sdcChairpersonSignatureFileId), // SDC Chairperson
-        pdfs: processMultipleFilesMetadata(data.pdfFileIds), // Changed to 'pdfs'
-        zipFile: processSingleFileMetadata(data.zipFileId), // Changed to 'zipFile'
+        proofDocument: processSingleFileMetadata(data.proofDocument),
+        studentSignature: processSingleFileMetadata(data.studentSignature),
+        guideSignature: processSingleFileMetadata(data.guideSignature),
+        hodSignature: processSingleFileMetadata(data.hodSignature),
+        sdcChairpersonSignature: processSingleFileMetadata(data.sdcChairpersonSignature),
+        pdfs: processMultipleFilesMetadata(data.pdfFileUrls),
+        zipFile: processSingleFileMetadata(data.zipFile),
       };
     }
+
     return {
       proofDocument: null,
       studentSignature: null,
       guideSignature: null,
       hodSignature: null,
       sdcChairpersonSignature: null,
-      pdfs: [], // Changed to 'pdfs'
-      zipFile: null, // Changed to 'zipFile'
+      pdfs: [],
+      zipFile: null,
     };
   });
 
@@ -238,35 +282,6 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
 
   // Update form and files when data prop changes (for view/edit mode)
   useEffect(() => {
-    const getFormattedDate = (dateString) => {
-        return dateString ? new Date(dateString).toISOString().slice(0, 10) : '';
-    };
-
-    const processSingleFileMetadata = (fileMetadata) => {
-      const fileId = fileMetadata?.id?.$oid || fileMetadata?.id;
-      if (!fileId) return null;
-      return {
-        file: null, // Always null for existing files; they are URLs
-        name: fileMetadata.originalName || fileMetadata.filename || 'Unknown File',
-        url: `${baseFileUrl}/${fileId}`,
-        id: fileId
-      };
-    };
-
-    const processMultipleFilesMetadata = (filesArray) => {
-      if (!Array.isArray(filesArray)) return [];
-      return filesArray.map(doc => {
-        const fileId = doc?.id?.$oid || doc?.id;
-        if (!fileId) return null;
-        return {
-          file: null, // Always null for existing files; they are URLs
-          name: doc.originalName || doc.filename || 'Unknown Document',
-          url: `${baseFileUrl}/${fileId}`,
-          id: fileId
-        };
-      }).filter(Boolean);
-    };
-
     if (viewOnly && data && Object.keys(data).length > 0) {
       setFormData(prevFormData => ({
         ...prevFormData,
@@ -284,7 +299,6 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
         paperTitle: data.paperTitle || '',
         paperLink: data.paperLink || '',
         authors: Array.isArray(data.authors) ? data.authors : ['', '', '', ''],
-        sttpTitle: data.sttpTitle || '',
         organizers: data.organizers || '',
         reasonForAttending: data.reasonForAttending || '',
         numberOfDays: data.numberOfDays || '',
@@ -302,14 +316,15 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
       }));
 
       // Populate files state using the new metadata structure from the backend
+      // Now using the global R1_BASE_FILE_URL
       setFiles({
-        proofDocument: processSingleFileMetadata(data.proofDocumentFileId),
-        studentSignature: processSingleFileMetadata(data.studentSignatureFileId),
-        guideSignature: processSingleFileMetadata(data.guideSignatureFileId),
-        hodSignature: processSingleFileMetadata(data.hodSignatureFileId),
-        sdcChairpersonSignature: processSingleFileMetadata(data.sdcChairpersonSignatureFileId),
-        pdfs: processMultipleFilesMetadata(data.pdfFileIds),
-        zipFile: processSingleFileMetadata(data.zipFileId),
+        proofDocument: processSingleFileMetadata(data.proofDocument),
+        studentSignature: processSingleFileMetadata(data.studentSignature),
+        guideSignature: processSingleFileMetadata(data.guideSignature),
+        hodSignature: processSingleFileMetadata(data.hodSignature),
+        sdcChairpersonSignature: processSingleFileMetadata(data.sdcChairpersonSignature),
+        pdfs: processMultipleFilesMetadata(data.pdfFileUrls),
+        zipFile: processSingleFileMetadata(data.zipFile),
       });
 
       setErrors({});
@@ -320,7 +335,7 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
       setFormData({
         guideName: '', coGuideName: '', employeeCodes: [], studentName: '', yearOfAdmission: '', branch: '',
         rollNo: '', mobileNo: '', feesPaid: 'No', receivedFinance: 'No', financeDetails: '',
-        paperTitle: '', paperLink: '', authors: ['', '', '', ''], sttpTitle: '', organizers: '',
+        paperTitle: '', paperLink: '', authors: ['', '', '', ''], organizers: '',
         reasonForAttending: '', numberOfDays: '', dateFrom: '', dateTo: '', registrationFee: '',
         dateOfSubmission: '', remarksByHod: '',
         bankDetails: { beneficiary: '', ifsc: '', bankName: '', branch: '', accountType: '', accountNumber: '' },
@@ -328,8 +343,7 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
         svvNetId: '', sdcChairpersonDate: '',
       });
       setFiles({
-        proofDocument: null,
-        studentSignature: null, guideSignature: null,
+        proofDocument: null, studentSignature: null, guideSignature: null,
         hodSignature: null, sdcChairpersonSignature: null, pdfs: [], zipFile: null,
       });
       setErrors({});
@@ -343,11 +357,12 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
       if (pdfsRef.current) pdfsRef.current.value = null;
       if (zipFileRef.current) zipFileRef.current.value = null;
     }
-  }, [data, viewOnly, baseFileUrl]); // Added baseFileUrl to dependencies
+  }, [data, viewOnly]); // baseFileUrl removed from dependency array
 
-  // --- Handlers for form fields ---
+  // ... rest of your component logic ...
+
   const handleChange = (e) => {
-    if (viewOnly) return;
+    if (viewOnly) return; // Prevent changes in view-only mode
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
     setErrors(prev => ({ ...prev, [name]: undefined }));
@@ -355,24 +370,29 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
 
   const renderFileDisplay = (fileKey, label) => {
     const file = files[fileKey];
-  
-    // If in viewOnly mode AND the current user is a student, do not display files.
-    if (viewOnly && isStudent) {
-      return null;
-    }
 
+    // 🛑 Hide files from students in view-only mode
+    if (viewOnly && isStudent) return null;
+
+    // 📄 Handle PDF array
     if (fileKey === 'pdfs') {
       if (viewOnly && Array.isArray(file) && file.length > 0) {
         return (
           <div className="flex flex-col space-y-1">
             {file.map((pdf, i) => (
-              <a key={i} href={pdf.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
-                View {pdf.name}
+              <a
+                key={i}
+                href={pdf.url} // ✅ Ensure full path
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 underline"
+              >
+                View {label} {i + 1} ({pdf.filename || pdf.originalName || "PDF"})
               </a>
             ))}
           </div>
         );
-      } else if (!viewOnly) { // Allow upload if not in viewOnly mode
+      } else if (!viewOnly) {
         return (
           <div className="flex flex-col">
             <label className="bg-blue-500 text-white px-4 py-2 rounded cursor-pointer hover:bg-blue-600">
@@ -387,21 +407,27 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
               />
             </label>
             <span className="mt-1 text-sm text-gray-600">
-              {Array.isArray(file) && file.length > 0 ? file.map(f => f.name || f).join(', ') : "No PDFs chosen"}
+              {Array.isArray(file) && file.length > 0 ? file.map(f => f.name || f.filename).join(', ') : "No PDFs chosen"}
             </span>
           </div>
         );
       }
     }
-  
+
+    // 🗜️ Handle ZIP File
     if (fileKey === 'zipFile') {
       if (viewOnly && file?.url) {
         return (
-          <a href={file.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
-            View ZIP File ({file.name})
+          <a
+            href={file.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-600 underline"
+          >
+            View ZIP File ({file.filename || file.originalName})
           </a>
         );
-      } else if (!viewOnly) { // Allow upload if not in viewOnly mode
+      } else if (!viewOnly) {
         return (
           <div className="flex items-center">
             <label className="bg-blue-500 text-white px-4 py-2 rounded cursor-pointer hover:bg-blue-600">
@@ -415,21 +441,26 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
               />
             </label>
             <span className="ml-2 text-sm text-gray-600">
-              {file ? file.name : "No ZIP selected"}
+              {file?.name || file?.filename || "No ZIP selected"}
             </span>
           </div>
         );
       }
     }
 
-    // Default for other single files (proofDocument, signatures)
-    if (viewOnly && file?.url) { // If in viewOnly mode and file has a URL, display preview link
+    // 📝 Handle Single Files (e.g., Signatures, Proof Document)
+    if (viewOnly && file?.url) {
       return (
-        <a href={file.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
-          View {label} ({file.name})
+        <a
+          href={file.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-blue-600 underline"
+        >
+          View {label} ({file.filename || file.originalName || 'File'})
         </a>
       );
-    } else if (!viewOnly) { // If not in viewOnly mode, display file input for upload
+    } else if (!viewOnly) {
       return (
         <div className="flex items-center">
           <label className="bg-blue-500 text-white px-4 py-2 rounded cursor-pointer hover:bg-blue-600">
@@ -437,7 +468,7 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
             <input
               type="file"
               className="hidden"
-              accept={fileKey.includes('Signature') ? 'image/*' : '*'} // Restrict signature to images
+              accept={fileKey.includes('Signature') ? 'image/*' : '*'}
               onChange={(e) => handleFileChange(fileKey, e)}
               ref={
                 fileKey === 'proofDocument' ? proofDocumentRef :
@@ -448,15 +479,15 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
               }
             />
           </label>
-          <span className="ml-2 text-sm">
-            {file ? file.name || 'File selected' : "No file chosen"}
+          <span className="ml-2 text-sm text-gray-600">
+            {file?.name || file?.filename || "No file chosen"}
           </span>
         </div>
       );
     }
-    return <span className="text-sm text-gray-400">No file uploaded</span>;
-  };
 
+    return <span className="text-sm text-gray-400">No file uploaded</span>;
+  }
   const handleBankChange = (e) => {
     if (viewOnly) return;
     const { name, value } = e.target;
@@ -555,14 +586,13 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
   };
 
   const handleSubmit = async (e) => {
-    e.preventDefault(); // Prevent default form submission
+    e.preventDefault();
 
     if (viewOnly) {
       setUserMessage({ text: 'Form is in view-only mode, cannot submit.', type: "error" });
       return;
     }
 
-    // Only students can submit
     if (!isStudent) {
       setUserMessage({ text: 'Only students are allowed to submit this form.', type: "error" });
       return;
@@ -570,53 +600,46 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
 
     const formErrors = validateForm(formData, files, viewOnly, isStudent);
     if (Object.keys(formErrors).length > 0) {
+      console.log("❌ Validation Errors:", formErrors);
       setErrors(formErrors);
       setUserMessage({ text: "Please correct the errors in the form.", type: "error" });
       return;
     }
 
     setIsSubmitting(true);
-    setUserMessage({ text: "", type: "" }); // Clear previous messages
+    setUserMessage({ text: "", type: "" });
 
     const submissionData = new FormData();
 
-    // Append form data
+    // Flatten formData safely into FormData object
     Object.entries(formData).forEach(([key, value]) => {
-      if (key === 'authors' || key === 'bankDetails' || key === 'employeeCodes') {
+      if (Array.isArray(value) || typeof value === 'object') {
         submissionData.append(key, JSON.stringify(value));
       } else {
-        submissionData.append(key, value);
+        submissionData.append(key, value ?? "");
       }
     });
 
-    // Retrieve svvNetId from localStorage and append
-    let svvNetId = '';
-    const userString = localStorage.getItem("user");
-    if (userString) {
-        try {
-            const user = JSON.parse(userString);
-            // Trim svvNetId immediately after extraction
-            svvNetId = (user.svvNetId || '').trim();
-            if (svvNetId) {
-                submissionData.append('svvNetId', svvNetId);
-            } else {
-                setUserMessage({ text: "User ID (svvNetId) not found or is empty in local storage. Cannot submit.", type: "error" });
-                setIsSubmitting(false);
-                return;
-            }
-        } catch (e) {
-            console.error("Failed to parse user data from localStorage:", e);
-            setUserMessage({ text: "User session corrupted. Please log in again.", type: "error" });
-            setIsSubmitting(false);
-            return;
-        }
-    } else {
-        setUserMessage({ text: "User data not found in local storage. Cannot submit.", type: "error" });
-        setIsSubmitting(false);
-        return;
+    // Extract and validate svvNetId
+    let svvNetId = "";
+    try {
+      const userString = localStorage.getItem("user");
+      if (!userString) throw new Error("User data not found.");
+
+      const user = JSON.parse(userString);
+      svvNetId = (user?.svvNetId || "").trim();
+
+      if (!svvNetId) throw new Error("svvNetId is empty.");
+
+      submissionData.append("svvNetId", svvNetId);
+    } catch (e) {
+      console.error("❌ svvNetId Error:", e.message);
+      setUserMessage({ text: "User session error: " + e.message, type: "error" });
+      setIsSubmitting(false);
+      return;
     }
 
-    // Append files
+    // Append files safely
     if (files.proofDocument?.file) submissionData.append('proofDocument', files.proofDocument.file);
     if (files.studentSignature?.file) submissionData.append('studentSignature', files.studentSignature.file);
     if (files.guideSignature?.file) submissionData.append('guideSignature', files.guideSignature.file);
@@ -624,53 +647,67 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
     if (files.sdcChairpersonSignature?.file) submissionData.append('sdcChairpersonSignature', files.sdcChairpersonSignature.file);
     if (files.zipFile?.file) submissionData.append('zipFile', files.zipFile.file);
 
-    files.pdfs.forEach((pdfObj, index) => {
-      if (pdfObj.file) { // Only append if it's a new File object
-        submissionData.append(`pdfs`, pdfObj.file);
+    files.pdfs.forEach((pdfObj) => {
+      if (pdfObj?.file) {
+        submissionData.append("pdfs", pdfObj.file);
       }
     });
 
     try {
-      const response = await axios.post('http://localhost:5000/api/r1form/submit', submissionData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
+      const response = await axios.post("http://localhost:5000/api/r1form/submit", submissionData, {
+        headers: { "Content-Type": "multipart/form-data" },
       });
 
       if (response.status === 200 || response.status === 201) {
         setUserMessage({ text: "Form submitted successfully!", type: "success" });
-        // Optionally reset form after successful submission
-        setFormData(prev => ({
-          ...prev,
-          guideName: '', coGuideName: '', employeeCodes: [], studentName: '', yearOfAdmission: '', branch: '',
-          rollNo: '', mobileNo: '', feesPaid: 'No', receivedFinance: 'No', financeDetails: '',
-          paperTitle: '', paperLink: '', authors: ['', '', '', ''], sttpTitle: '', organizers: '',
-          reasonForAttending: '', numberOfDays: '', dateFrom: '', dateTo: '', registrationFee: '',
-          dateOfSubmission: '', remarksByHod: '',
-          bankDetails: { beneficiary: '', ifsc: '', bankName: '', branch: '', accountType: '', accountNumber: '' },
-          amountClaimed: '', finalAmountSanctioned: '', status: 'pending',
-          svvNetId: '', sdcChairpersonDate: '',
-        }));
+
+        // Reset form and files
+        setFormData({
+          guideName: "", coGuideName: "", employeeCodes: [],
+          studentName: "", yearOfAdmission: "", branch: "", rollNo: "", mobileNo: "",
+          feesPaid: "No", receivedFinance: "No", financeDetails: "",
+          paperTitle: "", paperLink: "", authors: ["", "", "", ""], organizers: "", reasonForAttending: "", numberOfDays: "",
+          dateFrom: "", dateTo: "", registrationFee: "", dateOfSubmission: "",
+          remarksByHod: "", bankDetails: {
+            beneficiary: "", ifsc: "", bankName: "",
+            branch: "", accountType: "", accountNumber: ""
+          },
+          amountClaimed: "", finalAmountSanctioned: "", status: "pending",
+          svvNetId: "", sdcChairpersonDate: "",
+        });
+
         setFiles({
           proofDocument: null, studentSignature: null, guideSignature: null,
           hodSignature: null, sdcChairpersonSignature: null, pdfs: [], zipFile: null,
         });
+
         setErrors({});
+
         // Clear file input refs
-        if (proofDocumentRef.current) proofDocumentRef.current.value = null;
-        if (studentSignatureRef.current) studentSignatureRef.current.value = null;
-        if (guideSignatureRef.current) guideSignatureRef.current.value = null;
-        if (hodSignatureRef.current) hodSignatureRef.current.value = null;
-        if (sdcChairpersonSignatureRef.current) sdcChairpersonSignatureRef.current.value = null;
-        if (pdfsRef.current) pdfsRef.current.value = null;
-        if (zipFileRef.current) zipFileRef.current.value = null;
+        [
+          proofDocumentRef,
+          studentSignatureRef,
+          guideSignatureRef,
+          hodSignatureRef,
+          sdcChairpersonSignatureRef,
+          pdfsRef,
+          zipFileRef
+        ].forEach(ref => {
+          if (ref?.current) ref.current.value = null;
+        });
 
       } else {
-        setUserMessage({ text: `Submission failed: ${response.data.message || 'Unknown error'}`, type: "error" });
+        setUserMessage({
+          text: `Submission failed: ${response.data?.message || "Unknown error"}`,
+          type: "error"
+        });
       }
     } catch (error) {
-      console.error('Submission error:', error.response?.data || error.message);
-      setUserMessage({ text: `Submission failed: ${error.response?.data?.message || error.message}`, type: "error" });
+      console.error("❌ Submission error:", error.response?.data || error.message);
+      setUserMessage({
+        text: `Submission failed: ${error.response?.data?.message || error.message}`,
+        type: "error"
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -1111,7 +1148,7 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
               <td className="p-2 border border-gray-300">
                 <textarea
                   name="remarksByHod"
-                  value={formData.remarksByHod || ''} // Ensure value is a string, default to empty string
+                  value={formData.remarksByHod || ''}
                   onChange={handleChange}
                   disabled={viewOnly}
                   rows="3"
@@ -1125,7 +1162,7 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
         </table>
 
         {/* Signatures and Documents */}
-        {(!viewOnly || !isStudent) && ( // Show this section if not viewOnly OR if viewOnly but not a student
+        {(!viewOnly || !isStudent) && (
           <table className="w-full mb-6 border border-gray-300">
             <tbody>
               <tr>
@@ -1161,22 +1198,19 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
               <tr>
                 <th className="p-2 border border-gray-300 bg-gray-100">Signature of chairperson of SDC with date:</th>
                 <td colSpan="3" className="p-2 border border-gray-300">
-                  <div className="flex items-center flex-wrap"> {/* Added flex-wrap for responsiveness */}
-                    {/* Render file display for SDC Chairperson Signature */}
+                  <div className="flex items-center flex-wrap">
                     {renderFileDisplay('sdcChairpersonSignature', 'SDC Chairperson Signature')}
                     {errors.sdcChairpersonSignature && <p className="text-red-500 text-xs mt-1">{errors.sdcChairpersonSignature}</p>}
-                    {/* Only show remove button if not in viewOnly mode and file exists */}
                     {!viewOnly && files.sdcChairpersonSignature && (
                       <button type="button" onClick={() => handleRemoveFile('sdcChairpersonSignature')} className="text-red-600 hover:underline text-xs ml-2 mt-1">Remove</button>
                     )}
-                    {/* Date input for SDC Chairperson */}
                     <input
                       type="date"
                       name="sdcChairpersonDate"
                       value={formData.sdcChairpersonDate}
                       onChange={handleChange}
                       disabled={viewOnly}
-                      className="ml-2 p-1 border border-gray-300 rounded max-w-[150px]" // Added max-width
+                      className="ml-2 p-1 border border-gray-300 rounded max-w-[150px]"
                     />
                     {viewOnly && formData?.sdcChairpersonDate && (
                       <span className="ml-2 text-sm text-gray-600">({formData.sdcChairpersonDate})</span>
@@ -1234,7 +1268,7 @@ const R1 = ({ data, viewOnly }) => { // Assuming this is your R1 form component
           >
             Back
           </button>
-          {!viewOnly && isStudent && ( // Only show submit button if not viewOnly AND is a student
+          {!viewOnly && isStudent && (
             <button
               type="submit"
               disabled={isSubmitting}

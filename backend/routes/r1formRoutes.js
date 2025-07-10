@@ -81,8 +81,8 @@ router.post('/submit', uploadFields, async (req, res) => {
             svvNetId: svvNetId ? String(svvNetId).trim() : '',
             guideName, coGuideName, employeeCodes, studentName,
             yearOfAdmission, branch, rollNo, mobileNo,
-            feesPaid: feesPaid === 'Yes', // Convert to boolean
-            receivedFinance: receivedFinance === 'Yes', // Convert to boolean
+            feesPaid: feesPaid, // Convert to boolean
+            receivedFinance: receivedFinance, // Convert to boolean
             financeDetails,
             paperTitle, paperLink, authors: parsedAuthors, sttpTitle, organizers, reasonForAttending,
             numberOfDays: parseInt(numberOfDays),
@@ -144,7 +144,8 @@ router.get('/:id', async (req, res) => {
 // Existing PUT /:id/review route
 router.put('/:id/review', async (req, res) => {
   const { id } = req.params;
-  const { status, remarks } = req.body; // Assuming remarks can be updated
+  // Change 'remarks' to 'remarksByHod' here if that's what's sent from the frontend
+  const { status, remarksByHod } = req.body; 
 
   try {
     const form = await R1Form.findById(id);
@@ -153,13 +154,42 @@ router.put('/:id/review', async (req, res) => {
     }
 
     form.status = status || form.status;
-    form.remarks = remarks || form.remarks; // Update remarks if exists and provided
+    // Update the correct field name: remarksByHod
+    form.remarksByHod = remarksByHod || form.remarksByHod; 
+    
+    // If you also want to update sdcChairpersonDate here, add it:
+    // const { sdcChairpersonDate } = req.body;
+    // form.sdcChairpersonDate = sdcChairpersonDate || form.sdcChairpersonDate;
+    
     await form.save();
 
     res.status(200).json({ message: "R1 form review updated successfully." });
   } catch (error) {
     console.error("Error updating R1 form review:", error);
     res.status(500).json({ message: "Server error updating form review." });
+  }
+});
+
+router.get('/files/:fileId', async (req, res) => {
+  if (!gfsBucket) {
+    return res.status(503).json({ message: 'GridFS bucket not ready yet. Please try again shortly.' });
+  }
+
+  const fileId = req.params.fileId;
+
+  try {
+    const _id = new mongoose.Types.ObjectId(fileId);
+    const files = await gfsBucket.find({ _id }).toArray();
+
+    if (!files || files.length === 0) {
+      return res.status(404).json({ message: 'File not found' });
+    }
+
+    res.set('Content-Type', files[0].contentType || 'application/octet-stream');
+    gfsBucket.openDownloadStream(_id).pipe(res);
+  } catch (err) {
+    console.error("❌ File download error:", err);
+    res.status(500).json({ message: 'Error retrieving file' });
   }
 });
 

@@ -80,7 +80,7 @@ const PG_1 = ({ viewOnly = false, data = null }) => {
     if (userString) {
       try {
         const user = JSON.parse(userString);
-        setUserRole(user.role || 'student');
+        setUserRole(user.role.toLowerCase().trim());
       } catch (e) {
         console.error("❌ Failed to parse user data from localStorage:", e);
         showMessageBox("User session corrupted. Please log in again.", "error");

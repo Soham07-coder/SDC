@@ -28,7 +28,7 @@ const Login = () => {
     "sdc-kjsce@somaiya.edu": { password: "admin123", role: "Admin" },
     "devanshu.dee@somaiya.edu": { password: "admin123", role: "Admin" },
     // Add other roles if needed for hardcoding (e.g., Validator, Coordinator)
-    // "validator.a@somaiya.edu": { password: "val123", role: "Validator" },
+    "validator.a@somaiya.edu": { password: "val123", role: "Validator" },
   };
 
   const handleLogin = async (e) => {

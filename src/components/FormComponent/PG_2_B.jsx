@@ -173,19 +173,19 @@ const PG_2_B = ({ viewOnly = false, data = {} }) => {
   const isStudent = currentUserRole === "student";
 
   // Effect to load user role from localStorage
-  useEffect(() => {
-    const userString = localStorage.getItem("user");
-    if (userString) {
-      try {
-        const user = JSON.parse(userString);
-        if (user.role) {
-          setCurrentUserRole(user.role);
+   useEffect(() => {
+      const userString = localStorage.getItem("user");
+      if (userString) {
+        try {
+          const user = JSON.parse(userString);
+          if (user.role) {
+            setCurrentUserRole(user.role.toLowerCase().trim()); // ✅ Normalize here
+          }
+        } catch (e) {
+          console.error("Failed to parse user data from localStorage:", e);
         }
-      } catch (e) {
-        console.error("Failed to parse user data from localStorage:", e);
       }
-    }
-  }, []);
+    }, []);
 
 
   const handleChange = (e) => {

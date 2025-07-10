@@ -49,7 +49,7 @@ const UG3AForm = ({ data = null, viewOnly = false }) => {
     if (userString) {
       try {
         const user = JSON.parse(userString);
-        setUserRole(user.role);
+        setUserRole(user.role.toLowerCase().trim());
       } catch (err) {
         console.error("Failed to parse user data from local storage:", err);
       }

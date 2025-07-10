@@ -86,7 +86,7 @@ const PG_2_A = ({ viewOnly = false, data = null }) => {
       if (storedUser) {
         const user = JSON.parse(storedUser);
         if (user && user.role) {
-          setCurrentUserRole(user.role);
+          setCurrentUserRole(user.role.toLowerCase().trim()); 
         } else {
           setCurrentUserRole('student'); // Default if role is missing
         }
