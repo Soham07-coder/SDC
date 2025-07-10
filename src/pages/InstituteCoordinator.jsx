@@ -32,6 +32,10 @@ const InstCoordDash = () => {
     fetchApplications();
   }, []); // Empty dependency array means this effect runs once on component mount
  
+  const handleViewClick = (id) => {
+    navigate(`/application/${id}`); // Navigate to a specific application's detail page
+  };
+  
   // Roll number extractor
   const getRollNumber = (app) => {
     return (
@@ -89,9 +93,7 @@ const InstCoordDash = () => {
                       <td>
                         <button
                           className="view-btn"
-                          onClick={() =>
-                            navigate(`/facHome/${app.path || app.formId.toLowerCase()}`)
-                          }
+                          onClick={() => handleViewClick(app._id)}
                         >
                           View Form
                         </button>
