@@ -24,7 +24,7 @@ const PG2BFormSchema = new mongoose.Schema({
     required: true,
     trim: true,
   },
-  department: { type: String, required: true },
+  department: { type: String, required: false },
   studentName: { type: String, required: true },
   yearOfAdmission: { type: String, required: true },
   feesPaid: { type: String, enum: ['Yes', 'No'], required: true },

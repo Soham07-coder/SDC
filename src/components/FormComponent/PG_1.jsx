@@ -419,10 +419,11 @@ const PG_1 = ({ viewOnly = false, data = null }) => {
     }
 
     if (!formData.svvNetId || !department) {
-      showMessageBox("Authentication error: svvNetId or branch not found. Please log in.", "error");
-      return;
+      if(!formData.svvNetId){
+        showMessageBox("Authentication error: svvNetId not found. Please log in.", "error");
+        return;
+      }
     }
-
 
     try {
       const formPayload = new FormData();
