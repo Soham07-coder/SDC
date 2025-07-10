@@ -899,6 +899,53 @@ router.put("/:id/status", async (req, res) => {
     }
 });
 
+router.put("/:id/remarks", async (req, res) => {
+  const { id } = req.params;
+  let { remarks } = req.body;
+
+  // Validation
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({ message: "Invalid application ID." });
+  }
+
+  if (!remarks || !remarks.trim()) {
+    return res.status(400).json({ message: "Remarks cannot be empty." });
+  }
+
+  remarks = remarks.trim();
+
+  const formCollections = [
+    UG1Form, UGForm2, UG3AForm, UG3BForm,
+    PG1Form, PG2AForm, PG2BForm, R1Form
+  ];
+
+  try {
+    let updatedApp = null;
+
+    for (const Model of formCollections) {
+      updatedApp = await Model.findByIdAndUpdate(
+        id,
+        { remarks, updatedAt: new Date() },
+        { new: true }
+      ).lean();
+
+      if (updatedApp) break;
+    }
+
+    if (!updatedApp) {
+      return res.status(404).json({ message: "Application not found." });
+    }
+
+    return res.status(200).json({
+      message: "Remarks updated successfully.",
+      application: updatedApp
+    });
+  } catch (err) {
+    console.error("❌ Error updating remarks:", err);
+    res.status(500).json({ message: "Server error while updating remarks." });
+  }
+});
+
 // General file serving route for GridFS files
 router.get('/file/:fileId', async (req, res) => {
     try {
@@ -937,6 +984,5 @@ router.get('/file/:fileId', async (req, res) => {
         res.status(500).json({ message: "Server error." });
     }
 });
-
 
 export default router;

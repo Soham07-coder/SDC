@@ -1,93 +1,9 @@
-
-/* === AddUser Page Styling === */
-
-.add-user-page {
-  max-width: 900px;
-  margin: 2rem auto;
-  background-color: #fff;
-  padding: 2rem 2.5rem;
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-  font-family: 'Segoe UI', sans-serif;
-}
-
-.add-user-page h2 {
-  font-size: 1.8rem;
-  color: #c40000;
-  margin-bottom: 1.5rem;
-  text-align: center;
-}
-
-.add-user-form {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-  justify-content: center;
-  margin-bottom: 2rem;
-}
-
-.add-user-form input[type="email"],
-.add-user-form select {
-  padding: 0.65rem 1rem;
-  font-size: 1rem;
-  border: 1px solid #ccc;
-  border-radius: 8px;
-  min-width: 250px;
-  transition: border 0.2s ease;
-}
-
-.add-user-form input:focus,
-.add-user-form select:focus {
-  border-color: #c40000;
-  outline: none;
-}
-
-.add-user-form button {
-  background-color: #c40000;
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  padding: 0.65rem 1.5rem;
-  font-size: 1rem;
-  cursor: pointer;
-  transition: background 0.3s ease;
-}
-
-.add-user-form button:hover {
-  background-color: #a00000;
-}
-
-/* === User Table === */
-
-.add-user-page h3 {
-  font-size: 1.4rem;
-  margin-bottom: 1rem;
-  color: #333;
-}
-
-
-/* === Responsive === */
-@media (max-width: 600px) {
-  .add-user-form {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .add-user-form input,
-  .add-user-form select,
-  .add-user-form button {
-    width: 100%;
-  }
-
-  td button {
-    margin-bottom: 0.3rem;
-  }
-}
-
+/* === Core Layout === */
 .layout-container {
   display: flex;
   min-height: 100vh;
-  background-color: #f9f9f9;
+  background-color: #f5f5f5;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .main-content {
@@ -96,7 +12,240 @@
   flex-direction: column;
 }
 
-.add-user-page {
-  padding: 2rem;
-  flex: 1;
+.add-user-container {
+  padding: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* === Form Card === */
+.add-user-card {
+  background: white;
+  border-radius: 10px;
+  padding: 25px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  margin-bottom: 30px;
+}
+
+.add-user-title {
+  color: #c40000;
+  margin-bottom: 25px;
+  font-size: 24px;
+  text-align: center;
+}
+
+/* === Form Elements === */
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: #333;
+}
+
+.form-input,
+.form-select {
+  width: 100%;
+  padding: 12px 15px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 16px;
+  transition: all 0.3s;
+}
+
+.form-input:focus,
+.form-select:focus {
+  border-color: #c40000;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(196, 0, 0, 0.1);
+}
+
+.form-select {
+  appearance: none;
+ 
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 15px;
+}
+
+.submit-button {
+  background-color: #c40000;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 12px 20px;
+  font-size: 16px;
+  font-weight: 500;
+  cursor: pointer;
+  width: 100%;
+  transition: all 0.3s;
+  margin-top: 10px;
+}
+
+.submit-button:hover {
+  background-color: #a00000;
+  transform: translateY(-2px);
+}
+
+/* === Error Message === */
+.error-message {
+  color: #c40000;
+  background-color: #ffeaea;
+  padding: 12px 15px;
+  border-radius: 6px;
+  margin-bottom: 20px;
+  font-size: 14px;
+}
+
+/* === Users Table === */
+.users-table-container {
+  background: white;
+  border-radius: 10px;
+  padding: 25px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.users-title {
+  color: #333;
+  margin-bottom: 20px;
+  font-size: 20px;
+}
+
+.table-wrapper {
+  overflow-x: auto;
+}
+
+.users-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 600px;
+}
+
+.users-table th {
+  background-color: #f8f8f8;
+  color: #555;
+  font-weight: 600;
+  text-align: left;
+  padding: 12px 15px;
+  border-bottom: 2px solid #eee;
+}
+
+.users-table td {
+  padding: 12px 15px;
+  border-bottom: 1px solid #eee;
+  vertical-align: middle;
+}
+
+.users-table tr:hover {
+  background-color: #f9f9f9;
+}
+
+/* === Table Cells === */
+.email-cell {
+  max-width: 250px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.password-cell {
+  font-family: monospace;
+  letter-spacing: 2px;
+}
+
+.actions-cell {
+  white-space: nowrap;
+}
+
+/* === Role Badges === */
+.role-badge {
+  display: inline-block;
+  padding: 5px 10px;
+  border-radius: 50px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.role-badge.validator {
+  background-color: #ffe0e0;
+  color: #c40000;
+}
+
+/* === Action Buttons === */
+.action-btn {
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+  margin-right: 8px;
+}
+
+.edit-btn {
+  background-color: #e3f2fd;
+  color: #1565c0;
+}
+
+.edit-btn:hover {
+  background-color: #bbdefb;
+}
+
+.delete-btn {
+  background-color: #ffebee;
+  color: #c62828;
+}
+
+.delete-btn:hover {
+  background-color: #ffcdd2;
+}
+
+/* === No Users Message === */
+.no-users {
+  color: #666;
+  text-align: center;
+  padding: 20px;
+  font-style: italic;
+}
+
+/* === Responsive Adjustments === */
+@media (max-width: 768px) {
+  .add-user-container {
+    padding: 15px;
+  }
+  
+  .add-user-card,
+  .users-table-container {
+    padding: 20px;
+  }
+  
+  .form-input,
+  .form-select {
+    padding: 10px 12px;
+  }
+  
+  .submit-button {
+    padding: 10px 15px;
+  }
+}
+
+@media (max-width: 480px) {
+  .add-user-title {
+    font-size: 20px;
+  }
+  
+  .users-title {
+    font-size: 18px;
+  }
+  
+  .action-btn {
+    padding: 5px 8px;
+    font-size: 13px;
+    margin-right: 5px;
+  }
 }

@@ -8,11 +8,19 @@ const FacRejectedApplications = () => {
   const [applications, setApplications] = useState([]); // Renamed from 'rejected' for consistency with other components
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const navigate = useNavigate(); // Uncomment if you add a 'View' button later
+  const navigate = useNavigate();
+
+  // --- New States for Edit Remarks Modal ---
+  const [showModal, setShowModal] = useState(false);
+  const [currentApp, setCurrentApp] = useState(null);
+  const [editedRemarks, setEditedRemarks] = useState("");
+  const [savingRemarks, setSavingRemarks] = useState(false); // To show loading state for save operation
+  const [saveError, setSaveError] = useState(null);       // To show error for save operation
 
   /**
    * Fetches rejected applications from the backend API.
    * Manages loading and error states during the fetch operation.
+   * THIS LOGIC REMAINS UNCHANGED AS PER REQUEST.
    */
   const fetchApplications = async () => {
     setLoading(true); // Indicate that data fetching has started
@@ -44,12 +52,65 @@ const FacRejectedApplications = () => {
     fetchApplications();
   }, []); // Empty dependency array ensures this runs only once on component mount
 
-  // Example handleViewClick if you decide to add a 'View' button for rejected applications
+  /**
+   * Handles click for the 'View' button, navigating to application details.
+   */
   const handleViewClick = (id) => {
     navigate(`/application/${id}`);
   };
 
-  // Conditional rendering based on loading and error states
+  /**
+   * Handles click for the 'Edit' button, opening the remarks modal.
+   */
+  const handleEditClick = (app) => {
+    setCurrentApp(app);
+    setEditedRemarks(app.remarks || ""); // Pre-fill with existing remarks, or empty string if none
+    setShowModal(true);
+    setSaveError(null); // Clear any previous save errors
+  };
+
+  /**
+   * Handles saving the edited remarks to the backend.
+   */
+  const handleSaveChanges = async () => {
+    if (!currentApp || !editedRemarks.trim()) {
+      setSaveError("Remarks cannot be empty.");
+      return;
+    }
+
+    setSavingRemarks(true);
+    setSaveError(null);
+
+    try {
+      // Assuming your backend has an endpoint like /api/applications/:id for updates
+      // This endpoint needs to be able to update 'remarks' field.
+      const res = await fetch(`http://localhost:5000/api/application/${currentApp._id}/remarks`, {
+        method: "PUT", // or PATCH, depending on your API
+        headers: {
+          "Content-Type": "application/json",
+          // Include authorization token if required by your API
+          // 'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        },
+        body: JSON.stringify({ remarks: editedRemarks }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || `Failed to update remarks. Status: ${res.status}`);
+      }
+
+      // If save is successful, re-fetch applications to update the table
+      await fetchApplications();
+      setShowModal(false); // Close the modal
+    } catch (err) {
+      console.error("Error saving remarks:", err);
+      setSaveError(err.message);
+    } finally {
+      setSavingRemarks(false);
+    }
+  };
+
+  // Conditional rendering based on loading and error states for the main page
   if (loading) {
     return (
       <div className="main-wrapper">
@@ -83,6 +144,7 @@ const FacRejectedApplications = () => {
           <h2 className="page-title text-3xl font-bold mb-6 text-gray-800">Rejected Applications</h2>
           <p className="text-gray-600 mb-8 leading-relaxed">
             Here you can review applications that have been rejected, along with the provided remarks.
+            You can also edit the remarks if necessary.
           </p>
 
           <div className="table-wrapper overflow-x-auto bg-white rounded-lg shadow-md border border-gray-200">
@@ -95,7 +157,6 @@ const FacRejectedApplications = () => {
                   <th className="p-4 text-sm font-semibold text-gray-700 uppercase tracking-wider">Submitted On</th>
                   <th className="p-4 text-sm font-semibold text-gray-700 uppercase tracking-wider">Branch</th>
                   <th className="p-4 text-sm font-semibold text-gray-700 uppercase tracking-wider">Remarks</th>
-                  {/* Uncomment if you want an action button like 'View' */}
                   <th className="p-4 text-sm font-semibold text-gray-700 uppercase tracking-wider">Action</th>
                 </tr>
               </thead>
@@ -121,21 +182,26 @@ const FacRejectedApplications = () => {
                       </td>
                       <td className="p-4 text-gray-700">{app.branch || "N/A"}</td>
                       <td className="p-4 text-red-600">{app.remarks || "No remarks provided."}</td> {/* Display remarks */}
-                      {/* Uncomment if you want an action button like 'View' */}
-                      <td className="p-4">
+                      <td className="p-4 flex gap-2"> {/* Added flex and gap for buttons */}
                         <button
                           onClick={() => handleViewClick(app._id)}
-                          className="view-button"
+                          className="view-button bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50"
                         >
                           View
+                        </button>
+                        <button
+                          onClick={() => handleEditClick(app)}
+                          className="edit-btn"
+                        >
+                          Edit Remarks
                         </button>
                       </td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    {/* Adjusted colSpan based on the number of columns (currently 6 including Remarks) */}
-                    <td colSpan="6" className="text-center text-gray-500 py-6 text-base">
+                    {/* colSpan is now 7 for the additional Action column */}
+                    <td colSpan="7" className="text-center text-gray-500 py-6 text-base">
                       No rejected applications found.
                     </td>
                   </tr>
@@ -145,6 +211,44 @@ const FacRejectedApplications = () => {
           </div>
         </div>
       </div>
+
+      {/* Edit Remarks Modal */}
+      {showModal && (
+        <div className="modal-overlay fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
+          <div className="modal-content bg-white p-8 rounded-lg shadow-xl max-w-md w-full relative">
+            <h3 className="text-2xl font-bold mb-4 text-gray-800">
+              Edit Remarks for {currentApp?.name} ({currentApp?.formType})
+            </h3>
+            <textarea
+              value={editedRemarks}
+              onChange={(e) => setEditedRemarks(e.target.value)}
+              className="remarks-textarea w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-700"
+              rows="6"
+              placeholder="Enter remarks..."
+              disabled={savingRemarks} // Disable textarea while saving
+            />
+            {saveError && (
+              <p className="text-red-500 text-sm mt-2">{saveError}</p>
+            )}
+            <div className="modal-actions flex justify-end gap-3 mt-6">
+              <button
+                className="cancel-btn bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-50"
+                onClick={() => setShowModal(false)}
+                disabled={savingRemarks}
+              >
+                Cancel
+              </button>
+              <button
+                className="save-btn bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50"
+                onClick={handleSaveChanges}
+                disabled={savingRemarks}
+              >
+                {savingRemarks ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

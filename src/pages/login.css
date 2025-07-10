@@ -7,13 +7,12 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  
+  background-color: #f5f5f5;
 }
 
 /* Navbar */
 .navbar {
   width: 100%;
-  
   height: 120px;
   background-color: white;
   display: flex;
@@ -31,13 +30,15 @@ body {
 .navbar-logo {
   width: 200px;
   height: 109px;
+  object-fit: contain;
 }
 
-.navbar-logo1{
+.navbar-logo1 {
   width: 140px;
   height: 100px;
-  
+  object-fit: contain;
 }
+
 .navbar-title {
   font-size: 24px;
   font-weight: 600;
@@ -45,122 +46,76 @@ body {
   text-align: center;
 }
 
+/* Background container */
 .login-page {
-    width: 100vw;
-    height: 100%;
-    display: flex;
-    
-    background: url('../assets/background.jpg') no-repeat center center/cover;
-  }
+  width: 100vw;
+  min-height: 100vh;
+  display: flex;
+  background: url('../assets/background.jpg') no-repeat center center/cover;
+  padding-top: 120px; /* Space for navbar */
+}
 
 /* Main Container */
 .login-container {
-   
   width: 100%;
   max-width: 1440px;
-  height: 100vh;
+  min-height: calc(100vh - 120px);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 20px;
-  gap: 30px;
-  box-sizing: border-box;
-  margin-top: 157px; /* To push content below navbar */
+  margin: 0 auto;
 }
 
-/* Validator Box */
-.validator-box {
+/* Login Box */
+.login-box {
   width: 475px;
-  height: auto;
-  background-color: #B7202E;
+  min-height: 500px;
   border-radius: 10px;
   padding: 40px;
   display: flex;
   flex-direction: column;
   align-items: center;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-  opacity: 85%;
+  background-color: white;
+  opacity: 0.95;
+}
+
+/* Titles and Text */
+.login-title {
+  font-size: 28px;
+  text-align: center;
+  margin-bottom: 15px;
+  line-height: 1.3;
+  color: #B7202E;
+}
+
+.login-title .highlight {
+  display: block;
 }
 
 .description {
   font-size: 14px;
-  color: white;
+  color: #333;
   text-align: center;
   margin-bottom: 20px;
   line-height: 1.5;
 }
 
-.validator-title {
-    font-size: 28px;
-    font-weight: 700;
-    color: white;
-    text-align: center;
-    margin-bottom: 15px;
-    line-height: 1.3;
-}
-.validator-question {
-    font-size: 20px;
-    font-weight: bold;
-    color: white;
-    margin-bottom: 5px;
-}
-.validator-login-text {
-    font-size: 14px;
-    color: white;
-    margin-bottom: 20px;
+.login-question {
+  font-size: 20px;
+  font-weight: bold;
+  color: #B7202E;
+  margin-bottom: 5px;
 }
 
-.google-login {
-  width: 360px;
-  height: 50px;
-  background-color: white;
-  border: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 5px;
-  font-size: 16px;
-  font-weight: 600;
-  color:black;
-  cursor: pointer;
-  border-radius: 50px;
-  border:2px solid black;
-}
-
-.google-login .icon {
-  width: 24px;
-  height: 24px;
-  margin-right: 10px;
-}
-
-/* Student Login Box */
-.student-login-box {
-  width: 475px;
-  height: auto;
-  background-color: white;
-  border-radius: 10px;
-  padding: 40px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-  opacity: 85%;
-}
-
-.form-title {
-    font-size: 28px;
-    font-weight: 500;
-    color: black;
-    text-align: center;
-    margin-bottom: 15px;
-    line-height: 1.3;
-}
-
+/* Form Elements */
 .login-form {
   width: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
+  margin-bottom: 10px; /* Reduced from 20px */
 }
 
 label {
@@ -168,6 +123,7 @@ label {
   color: #333;
   align-self: flex-start;
   margin-bottom: 5px;
+  font-weight: 600;
 }
 
 .login-input {
@@ -180,57 +136,95 @@ label {
   box-sizing: border-box;
 }
 
+/* Updated Remember Me Section */
 .remember-me {
   display: flex;
   align-items: center;
   width: 100%;
-  margin: 10px 0;
+  margin: 5px 0; /* Reduced margin */
+  gap: 8px; /* Space between checkbox and label */
 }
 
-.remember-me input {
-  margin-right: 5px;
+.remember-me input[type="checkbox"] {
+  margin: 0; /* Remove default margins */
+  width: auto; /* Prevent stretching */
 }
 
+/* Error Message */
+.error-message {
+  color: #B7202E;
+  margin-bottom: 10px; /* Reduced from 15px */
+  text-align: center;
+  font-weight: 600;
+}
+
+/* Login Button */
 .login-button {
   width: 243px;
   height: 40px;
+  font-size: 16px;
+  font-weight: 600;
+  border: none;
+  border-radius: 50px;
+  cursor: pointer;
+  transition: all 0.3s ease;
   background-color: #B7202E;
   color: white;
-  font-size: 16px;
-  font-weight: 600;
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
-  border-radius: 50px;
-}
-
-.login-button-val {
-  width: 243px;
-  height: 40px;
-  color: #B7202E;
-  background-color: white;
-  font-size: 16px;
-  font-weight: 600;
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
-  border-radius: 50px;
+  margin-top: 5px; /* Reduced from 10px */
+  margin-bottom: 10px; /* Added to reduce gap before OR */
 }
 
 .login-button:hover {
   background-color: #9e1d28;
 }
 
-.login-button-val:hover {
-  background-color: #f0f0f0;
-  color: #B7202E;
+/* Updated OR Divider */
+.or {
+  font-size: 20px;
+  font-weight: bold;
+  color: #333;
+  margin: 10px 0; /* Reduced top margin from 34px */
+  width: 100%;
+  display: flex;
+  align-items: center;
+  text-align: center;
 }
-.or{
-    font-size: 20px;
-    font-weight: bold;
-    color: black;
-    margin-top:34px;
-    margin-bottom: 5px;
+
+.or::before,
+.or::after {
+  content: "";
+  flex: 1;
+  border-bottom: 1px solid #ddd;
+  margin: 0 10px;
+}
+
+/* Google Sign-In Button */
+.google-login {
+  width: 100%;
+  max-width: 360px;
+  height: 50px;
+  background-color: white;
+  border: 2px solid black;
+  border-radius: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 600;
+  color: black;
+  cursor: pointer;
+  transition: background 0.2s;
+  margin-top: 5px; /* Reduced space above button */
+}
+
+.google-login:hover {
+  background-color: #f0f0f0;
+}
+
+.google-login .icon {
+  width: 24px;
+  height: 24px;
+  margin-right: 10px;
 }
 
 /* Responsive Design */
@@ -245,85 +239,45 @@ label {
   }
 
   .login-container {
-    flex-direction: column;
-    margin-top: 130px;
+    padding-top: 20px;
   }
 
-  .validator-box,
-  .student-login-box {
+  .login-box {
     width: 90%;
     max-width: 475px;
-    margin-bottom: 20px;
+    min-height: auto;
   }
 }
-.custom-google-btn {
-  display: flex;
-  align-items: center;
-  background: #e0e0e0;
-  color: #222;
-  border: none;
-  border-radius: 20px;
-  padding: 8px 24px;
-  font-size: 1.2rem;
-  font-weight: 400;
-  cursor: pointer;
-  margin-top: 10px;
-  margin-bottom: 10px;
-  transition: background 0.2s;
-  box-shadow: none;
-}
 
-.custom-google-btn:hover {
-  background: #d5d5d5;
-}
+@media (max-width: 576px) {
+  .navbar {
+    height: 100px;
+    padding: 0 15px;
+  }
 
-.google-icon {
-  width: 28px;
-  height: 28px;
-  margin-right: 12px;
-  background: transparent;
-  border-radius: 50%;
-  object-fit: cover;
-}
+  .navbar-logo {
+    width: 150px;
+    height: auto;
+  }
 
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-color: rgba(0, 0, 0, 0.4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
+  .navbar-logo1 {
+    width: 100px;
+    height: auto;
+  }
 
-.modal-box {
-  background: #fff;
-  padding: 30px 40px;
-  border-radius: 12px;
-  text-align: center;
-  width: 90%;
-  max-width: 400px;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
-}
+  .navbar-title {
+    font-size: 18px;
+  }
 
-.modal-box h2 {
-  margin-bottom: 10px;
-}
+  .login-box {
+    padding: 25px;
+  }
 
-.modal-box .button-group button {
-  margin: 10px;
-  padding: 10px 20px;
-  font-size: 16px;
-  cursor: pointer;
-  border: none;
-  background-color: #6200ea;
-  color: white;
-  border-radius: 5px;
-}
+  .login-title {
+    font-size: 24px;
+  }
 
-.modal-box .button-group button:hover {
-  background-color: #3700b3;
+  .login-button {
+    width: 200px;
+  }
 }
