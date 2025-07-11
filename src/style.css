@@ -181,6 +181,12 @@ body {
   color: #f44336;
   font-weight: 500;
 }
+/* Added fallback for unknown status */
+.status.unknown {
+    background-color: #e5e7eb; /* Tailwind gray-200 */
+    color: #4b5563; /* Tailwind gray-700 */
+}
+
 
 .view-btn {
   color: #0066cc;
@@ -190,6 +196,7 @@ body {
   text-decoration: underline;
   font-size: 0.9rem;
   transition: color 0.2s;
+  margin: 0 4px; /* Maintain spacing */
 }
 
 .view-btn:hover {
@@ -209,6 +216,168 @@ body {
 
 .edit-btn:hover {
   background-color: #e0a800;
+}
+
+/* New Approve/Reject button styles */
+.approve-btn {
+    background-color: #22c55e; /* Tailwind green-500 */
+    color: white;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+    margin: 0 4px;
+    border: 1px solid transparent;
+}
+.approve-btn:hover {
+    background-color: #16a34a; /* Darker green */
+    transform: translateY(-1px);
+}
+
+.reject-btn {
+    background-color: #ef4444; /* Tailwind red-500 */
+    color: white;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+    margin: 0 4px;
+    border: 1px solid transparent;
+}
+.reject-btn:hover {
+    background-color: #dc2626; /* Darker red */
+    transform: translateY(-1px);
+}
+
+/* --- MODAL STYLES --- */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal-container {
+  background: white;
+  padding: 25px;
+  border-radius: 12px;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.25);
+  width: 90%;
+  max-width: 500px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  font-family: 'Inter', sans-serif; /* Keep Inter for modal for consistency */
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 15px;
+  margin-bottom: 15px;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 1.5rem;
+  color: var(--text-dark);
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 2rem;
+  cursor: pointer;
+  color: #888;
+  transition: color 0.2s ease;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.modal-close:hover {
+  color: var(--text-dark);
+  background-color: #f0f0f0;
+}
+
+.modal-body textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 1rem;
+  min-height: 120px;
+  resize: vertical;
+  box-sizing: border-box; /* Ensures padding doesn't increase width */
+}
+
+.modal-body textarea:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(141, 0, 0, 0.2); /* Using primary color for focus */
+}
+
+.modal-error-message {
+  color: #ef4444; /* Tailwind red-500 */
+  font-size: 0.9rem;
+  margin-top: 10px;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 15px;
+  padding-top: 15px;
+  border-top: 1px solid #eee;
+}
+
+.modal-cancel, .modal-submit {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 600;
+  transition: var(--transition);
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.modal-cancel {
+  background-color: #e0e0e0;
+  color: #555;
+}
+
+.modal-cancel:hover:not(:disabled) {
+  background-color: #d0d0d0;
+}
+
+.modal-submit {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+.modal-submit:hover:not(:disabled) {
+  background-color: var(--primary-hover);
+}
+
+.modal-cancel:disabled, .modal-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 /* Responsive Design */
@@ -241,6 +410,73 @@ body {
   
   .form-card {
     padding: 18px;
+  }
+
+  /* Table responsiveness */
+  .app-table thead {
+      display: none; /* Hide table header on small screens */
+  }
+
+  .app-table, .app-table tbody, .app-table tr, .app-table td {
+      display: block; /* Make table elements behave like blocks */
+      width: 100%;
+  }
+
+  .app-table tr {
+      margin-bottom: 15px;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 10px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+  }
+
+  .app-table td {
+      text-align: right;
+      padding-left: 50%; /* Space for pseudo-element label */
+      position: relative;
+  }
+
+  .app-table td::before {
+      content: attr(data-label); /* Use data-label for content */
+      position: absolute;
+      left: 10px;
+      width: calc(50% - 20px);
+      text-align: left;
+      font-weight: bold;
+      color: var(--text-medium);
+  }
+
+  /* Assign data-label to each td in JSX */
+  .app-table td:nth-of-type(1)::before { content: "Form"; }
+  .app-table td:nth-of-type(2)::before { content: "Applicant’s Roll No."; }
+  .app-table td:nth-of-type(3)::before { content: "Application Date"; }
+  .app-table td:nth-of-type(4)::before { content: "Status"; }
+  .app-table td:nth-of-type(5)::before { content: "Action"; }
+
+  .app-table td:last-child {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 8px;
+      padding-left: 10px; /* Reset padding for action buttons */
+  }
+
+  .modal-container {
+      padding: 20px;
+      margin: 15px;
+  }
+
+  .modal-header h3 {
+      font-size: 1.2rem;
+  }
+
+  .modal-footer {
+      flex-direction: column;
+      gap: 10px;
+  }
+
+  .modal-cancel, .modal-submit {
+      width: 100%;
   }
 }
 
